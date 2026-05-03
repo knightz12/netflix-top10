@@ -27,28 +27,28 @@ let cache = {
 
 const manifest = {
   id: "org.netflix.mdl.combo.editor.imdb",
-  version: "11.0.0",
+  version: "11.2.0",
   name: "Netflix PH + Watchlist",
   description: "Netflix PH Top 10 + editable watchlist with auto IMDb finder",
   resources: ["catalog"],
   types: ["movie", "series"],
   catalogs: [
-    {
-      type: "movie",
-      id: "netflix_ph_top10_movies",
-      name: "Netflix PH Top 10 Movies",
-    },
-    {
-      type: "series",
-      id: "netflix_ph_top10_series",
-      name: "Netflix PH Top 10 Series",
-    },
-    {
-      type: "series",
-      id: "mdl_watchlist",
-      name: "My Watchlist",
-    },
-  ],
+  {
+    type: "movie",
+    id: "netflix_ph_top10_movies",
+    name: "Netflix PH Top 10 Movies This Week",
+  },
+  {
+    type: "series",
+    id: "netflix_ph_top10_series",
+    name: "Netflix PH Top 10 Series This Week",
+  },
+  {
+    type: "series",
+    id: "mdl_watchlist",
+    name: "Kdrama Watchlist",
+  },
+],
 };
 
 /* ---------------- UTIL ---------------- */
