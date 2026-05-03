@@ -169,45 +169,39 @@ router.get("/edit", (req, res) => {
 <script>
 let fullData = document.getElementById("box").value;
 let currentTab = "all";
-let classified = { movie: [], series: [], unknown: [] };
+let classified = null; // 🔥 start as null
 
 function getBox() {
   return document.getElementById("box");
 }
 
-function getVisibleLines() {
-  return getBox().value
-    .split("\\n")
-    .map(l => l.trim())
-    .filter(Boolean);
+function splitLines(text) {
+  return text.split("\\n").map(l => l.trim()).filter(Boolean);
 }
 
-function saveCurrentTabToMemory() {
-  const lines = getVisibleLines();
+function joinAll() {
+  if (!classified) return fullData;
 
-  if (currentTab === "movie") classified.movie = lines;
-  if (currentTab === "series") classified.series = lines;
-  if (currentTab === "unknown") classified.unknown = lines;
-
-  if (currentTab === "all") {
-    fullData = getBox().value;
-  }
-}
-
-function allLines() {
   return [
     ...classified.movie,
     ...classified.series,
     ...classified.unknown
-  ];
+  ].join("\\n");
 }
 
+/* ---------------- SAFE RENDER ---------------- */
+
 function renderTab(tab) {
-  saveCurrentTabToMemory();
+  if (!classified) {
+    // not ready yet → just show raw
+    getBox().value = fullData;
+    return;
+  }
+
   currentTab = tab;
 
   if (tab === "all") {
-    getBox().value = allLines().join("\\n");
+    getBox().value = joinAll();
   }
 
   if (tab === "movie") {
@@ -223,9 +217,11 @@ function renderTab(tab) {
   }
 }
 
+/* ---------------- CLASSIFY ---------------- */
+
 async function classifyTabs() {
   const status = document.getElementById("status");
-  status.innerText = "Detecting movie / series type...";
+  status.innerText = "Detecting types...";
 
   try {
     const res = await fetch("/api/classify", {
@@ -240,37 +236,45 @@ async function classifyTabs() {
     if (!classified.series) classified.series = [];
     if (!classified.unknown) classified.unknown = [];
 
-    currentTab = "all";
-    getBox().value = allLines().join("\\n");
+    getBox().value = joinAll();
 
     status.innerText =
-      "Detected: " +
-      classified.movie.length + " movies, " +
-      classified.series.length + " series, " +
+      "✔ " +
+      classified.movie.length + " movies • " +
+      classified.series.length + " series • " +
       classified.unknown.length + " unknown";
+
   } catch {
-    classified = { movie: [], series: [], unknown: fullData.split("\\n").filter(Boolean) };
-    getBox().value = classified.unknown.join("\\n");
-    status.innerText = "Type detection failed. Loaded all items as Unknown.";
+    classified = {
+      movie: [],
+      series: [],
+      unknown: splitLines(fullData)
+    };
+
+    getBox().value = fullData;
+    status.innerText = "⚠ classification failed";
   }
 }
 
+/* ---------------- SAVE ---------------- */
+
 function beforeSave() {
-  saveCurrentTabToMemory();
-
-  getBox().value = allLines().join("\\n");
-
+  if (classified) {
+    getBox().value = joinAll();
+  }
   return true;
 }
+
+/* ---------------- AUTO IMDb ---------------- */
 
 async function autoIMDb() {
   const box = getBox();
   const status = document.getElementById("status");
 
-  saveCurrentTabToMemory();
-  box.value = allLines().join("\\n");
+  box.value = joinAll();
+  fullData = box.value;
 
-  status.innerText = "Finding IMDb IDs...";
+  status.innerText = "Finding IMDb...";
 
   try {
     const res = await fetch("/api/imdb", {
@@ -284,13 +288,21 @@ async function autoIMDb() {
 
     await classifyTabs();
 
-    status.innerText = "Auto IMDb done ✔ Click Save";
+    status.innerText = "✔ Auto IMDb done (Save)";
   } catch {
-    status.innerText = "Auto IMDb failed.";
+    status.innerText = "❌ Auto IMDb failed";
   }
 }
 
-classifyTabs();
+/* ---------------- INIT ---------------- */
+
+window.onload = () => {
+  // show initial content immediately
+  getBox().value = fullData;
+
+  // then classify in background
+  classifyTabs();
+};
 </script>
 
 </body>
