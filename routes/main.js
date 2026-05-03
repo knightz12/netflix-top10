@@ -168,175 +168,62 @@ router.get("/edit", (req, res) => {
 </div>
 
 <script>
-let fullData = document.getElementById("box").value;
-let currentTab = "all";
-let classified = null; // 🔥 start as null
-
 function getBox() {
   return document.getElementById("box");
 }
 
-function splitLines(text) {
-  return text.split("\\n").map(l => l.trim()).filter(Boolean);
+function getLines() {
+  return getBox().value
+    .split("\\n")
+    .map(l => l.trim())
+    .filter(Boolean);
 }
 
-function joinAll() {
-  if (!classified) return fullData;
-
-  return [
-    ...classified.movie,
-    ...classified.series,
-    ...classified.unknown
-  ].join("\\n");
+function setLines(lines) {
+  getBox().value = lines.join("\\n");
 }
 
-/* ---------------- SAFE RENDER ---------------- */
-
-function renderTab(tab) {
-  if (!classified) {
-    // not ready yet → just show raw
-    getBox().value = fullData;
-    return;
-  }
-
-  currentTab = tab;
-
-  if (tab === "all") {
-    getBox().value = joinAll();
-  }
-
-  if (tab === "movie") {
-    getBox().value = classified.movie.join("\\n");
-  }
-
-  if (tab === "series") {
-    getBox().value = classified.series.join("\\n");
-  }
-
-  if (tab === "unknown") {
-    getBox().value = classified.unknown.join("\\n");
-  }
-}
-
-/* ---------------- CLASSIFY ---------------- */
-
-async function classifyTabs() {
-  const status = document.getElementById("status");
-  status.innerText = "Detecting types...";
-
-  try {
-    const res = await fetch("/api/classify", {
-      method: "POST",
-      headers: { "Content-Type": "text/plain" },
-      body: fullData
-    });
-
-    classified = await res.json();
-
-    if (!classified.movie) classified.movie = [];
-    if (!classified.series) classified.series = [];
-    if (!classified.unknown) classified.unknown = [];
-
-    getBox().value = joinAll();
-
-    status.innerText =
-      "✔ " +
-      classified.movie.length + " movies • " +
-      classified.series.length + " series • " +
-      classified.unknown.length + " unknown";
-
-  } catch {
-    classified = {
-      movie: [],
-      series: [],
-      unknown: splitLines(fullData)
-    };
-
-    getBox().value = fullData;
-    status.innerText = "⚠ classification failed";
-  }
-}
-
-function getBox() {
-  return document.getElementById("box");
-}
-
-function splitLines(text) {
-  return text.split("\n").map(l => l.trim()).filter(Boolean);
-}
-
-/* ---------------- SORT A-Z ---------------- */
+/* A-Z sort */
 function sortAZ() {
-  const lines = splitLines(getBox().value);
+  const lines = getLines();
 
   lines.sort((a, b) => {
-    const aTitle = a.split("|")[0].toLowerCase();
-    const bTitle = b.split("|")[0].toLowerCase();
+    const aTitle = a.split("|")[0].trim().toLowerCase();
+    const bTitle = b.split("|")[0].trim().toLowerCase();
     return aTitle.localeCompare(bTitle);
   });
 
-  getBox().value = lines.join("\n");
+  setLines(lines);
 }
 
-/* ---------------- SORT RECENT ---------------- */
+/* Recently added first */
 function sortRecent() {
-  const lines = splitLines(getBox().value);
-
-  // reverse order = latest on top
+  const lines = getLines();
   lines.reverse();
-
-  getBox().value = lines.join("\n");
+  setLines(lines);
 }
-
-/* ---------------- SAVE ---------------- */
-
-function beforeSave() {
-  if (classified) {
-    getBox().value = joinAll();
-  }
-  return true;
-}
-
-/* ---------------- AUTO IMDb ---------------- */
 
 async function autoIMDb() {
   const box = getBox();
   const status = document.getElementById("status");
 
-  // use whatever is currently visible/edited
-  const currentText = box.value;
-
-  status.innerText = "Finding IMDb IDs...";
+  status.innerText = "Finding IMDb...";
 
   try {
     const res = await fetch("/api/imdb", {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
-      body: currentText
+      body: box.value
     });
 
     const text = await res.text();
-
     box.value = text;
-    fullData = text;
 
-    await classifyTabs();
-
-    status.innerText = "Auto IMDb done ✔ Click Save";
+    status.innerText = "Done ✔ Click Save";
   } catch {
-    status.innerText = "Auto IMDb failed.";
+    status.innerText = "Error ❌";
   }
 }
-
-/* ---------------- INIT ---------------- */
-
-window.onload = () => {
-  // show initial content immediately
-  getBox().value = fullData;
-
-  // then classify in background
-  classifyTabs();
-};
 </script>
 
 </body>
