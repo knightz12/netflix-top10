@@ -65,12 +65,20 @@ function cleanTitle(title) {
 async function fetchHtml(url) {
   const res = await fetch(url, {
     headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+      "Accept":
+        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       "Accept-Language": "en-US,en;q=0.9",
+      "Referer": "https://mydramalist.com/",
+      "Connection": "keep-alive"
     },
   });
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
+  if (!res.ok) {
+    throw new Error(`MDL HTTP ${res.status}`);
+  }
+
   return await res.text();
 }
 
@@ -260,33 +268,26 @@ async function getNetflixCatalog(type, req) {
 }
 
 async function fetchMDLList(username, listType) {
-  const url = `https://mydramalist.com/dramalist/${username}/${listType}`;
-  const html = await fetchHtml(url);
-  const $ = cheerio.load(html);
+  try {
+    const url = `https://mydramalist.com/dramalist/${username}/${listType}`;
+    const html = await fetchHtml(url);
+    const $ = cheerio.load(html);
 
-  const titles = [];
+    const titles = [];
 
-  $("a[href^='/']").each((_, el) => {
-    const href = $(el).attr("href") || "";
-    const title = cleanTitle($(el).text());
+    $(".title a").each((_, el) => {
+      const title = cleanTitle($(el).text());
 
-    if (
-      title &&
-      href.match(/^\/\d+/) &&
-      !title.toLowerCase().includes("edit") &&
-      !title.toLowerCase().includes("more") &&
-      !titles.includes(title)
-    ) {
-      titles.push(title);
-    }
-  });
+      if (title && !titles.includes(title)) {
+        titles.push(title);
+      }
+    });
 
-  $(".title a, h6.title a, h3 a").each((_, el) => {
-    const title = cleanTitle($(el).text());
-    if (title && !titles.includes(title)) titles.push(title);
-  });
-
-  return titles.slice(0, 100);
+    return titles.slice(0, 100);
+  } catch (e) {
+    console.error("MDL fetch failed:", e.message);
+    return [];
+  }
 }
 
 async function getMDLCatalog(cacheKey, listType) {
