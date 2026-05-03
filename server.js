@@ -275,13 +275,26 @@ async function fetchMDLList(username, listType) {
 
     const titles = [];
 
-    $(".title a").each((_, el) => {
+    // MDL usually stores drama titles in these links
+    $("a[href^='/']").each((_, el) => {
+      const href = $(el).attr("href") || "";
       const title = cleanTitle($(el).text());
 
-      if (title && !titles.includes(title)) {
+      if (
+        title &&
+        href.match(/^\/\d+-/) &&
+        title.length > 1 &&
+        !title.toLowerCase().includes("edit") &&
+        !title.toLowerCase().includes("add") &&
+        !title.toLowerCase().includes("more") &&
+        !title.toLowerCase().includes("review") &&
+        !titles.includes(title)
+      ) {
         titles.push(title);
       }
     });
+
+    console.log("MDL titles found:", titles);
 
     return titles.slice(0, 100);
   } catch (e) {
