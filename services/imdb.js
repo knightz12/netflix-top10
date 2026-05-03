@@ -46,11 +46,7 @@ async function fetchNetflixTitles(type = "movie") {
         .replace(/^Image:\s*/i, "")
         .trim();
 
-      if (
-        t &&
-        !t.toLowerCase().includes("netflix") &&
-        !titles.includes(t)
-      ) {
+      if (t && !t.toLowerCase().includes("netflix") && !titles.includes(t)) {
         titles.push(t);
       }
     });
@@ -97,7 +93,7 @@ async function searchCinemeta(title, type) {
   }
 }
 
-/* ---------------- AUTO IMDb ---------------- */
+/* ---------------- AUTO IMDb (FIXED) ---------------- */
 
 async function autoImdb(text) {
   const lines = text.split(/\r?\n/);
@@ -106,36 +102,46 @@ async function autoImdb(text) {
   for (const l of lines) {
     const line = l.trim();
 
-    // keep blank lines
+    // keep blank
     if (!line) {
       out.push("");
       continue;
     }
 
-    // keep headers/comments
+    // keep comments
     if (line.startsWith("#")) {
       out.push(line);
       continue;
     }
 
     const parts = line.split("|").map((p) => p.trim());
-    const title = parts[0];
-    const existingImdb = parts[1];
 
-    // keep already matched IMDb
-    if (existingImdb && existingImdb.startsWith("tt")) {
-      out.push(`${title} | ${existingImdb}`);
+    const title = parts[0];
+    let type = null;
+    let imdbId = null;
+
+    // 🔥 detect existing values properly
+    for (const p of parts) {
+      if (p === "movie" || p === "series") type = p;
+      if (p.startsWith("tt")) imdbId = p;
+    }
+
+    // already correct → keep
+    if (title && type && imdbId) {
+      out.push(`${title} | ${type} | ${imdbId}`);
       continue;
     }
 
-    const m =
-      (await searchCinemeta(title, "series")) ||
-      (await searchCinemeta(title, "movie"));
+    // 🔥 search both
+    const mSeries = await searchCinemeta(title, "series");
+    const mMovie = await searchCinemeta(title, "movie");
 
-    if (m?.id) {
-      out.push(`${title} | ${m.id}`);
+    if (mSeries?.id) {
+      out.push(`${title} | series | ${mSeries.id}`);
+    } else if (mMovie?.id) {
+      out.push(`${title} | movie | ${mMovie.id}`);
     } else {
-      out.push(title); // keep title, never blank
+      out.push(title);
     }
   }
 
