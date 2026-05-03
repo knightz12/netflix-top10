@@ -69,7 +69,9 @@ async function searchCinemeta(title, type) {
       .trim();
 
     const res = await fetch(
-      `https://v3-cinemeta.strem.io/catalog/${type}/top/search=${encodeURIComponent(clean)}.json`
+      `https://v3-cinemeta.strem.io/catalog/${type}/top/search=${encodeURIComponent(
+        clean
+      )}.json`
     );
 
     if (!res.ok) return null;
@@ -93,7 +95,7 @@ async function searchCinemeta(title, type) {
   }
 }
 
-/* ---------------- AUTO IMDb (FIXED) ---------------- */
+/* ---------------- AUTO IMDb + TYPE FIX ---------------- */
 
 async function autoImdb(text) {
   const lines = text.split(/\r?\n/);
@@ -102,47 +104,43 @@ async function autoImdb(text) {
   for (const l of lines) {
     const line = l.trim();
 
-    // keep blank
     if (!line) {
       out.push("");
       continue;
     }
 
-    // keep comments
     if (line.startsWith("#")) {
       out.push(line);
       continue;
     }
 
     const parts = line.split("|").map((p) => p.trim());
-
     const title = parts[0];
-    let type = null;
-    let imdbId = null;
 
-    // 🔥 detect existing values properly
-    for (const p of parts) {
-      if (p === "movie" || p === "series") type = p;
-      if (p.startsWith("tt")) imdbId = p;
-    }
+    const imdbIds = parts.filter((p) => p.startsWith("tt"));
+    const types = parts.filter((p) => p === "movie" || p === "series");
 
-    // already correct → keep
-    if (title && type && imdbId) {
-      out.push(`${title} | ${type} | ${imdbId}`);
+    // Fix broken lines:
+    // Title | tt123 | tt123
+    // Title | tt123
+    // Title | movie | tt123 | tt123
+    if (imdbIds.length !== 1 || types.length !== 1) {
+      const mSeries = await searchCinemeta(title, "series");
+      const mMovie = await searchCinemeta(title, "movie");
+
+      if (mSeries?.id) {
+        out.push(`${title} | series | ${mSeries.id}`);
+      } else if (mMovie?.id) {
+        out.push(`${title} | movie | ${mMovie.id}`);
+      } else {
+        out.push(title);
+      }
+
       continue;
     }
 
-    // 🔥 search both
-    const mSeries = await searchCinemeta(title, "series");
-    const mMovie = await searchCinemeta(title, "movie");
-
-    if (mSeries?.id) {
-      out.push(`${title} | series | ${mSeries.id}`);
-    } else if (mMovie?.id) {
-      out.push(`${title} | movie | ${mMovie.id}`);
-    } else {
-      out.push(title);
-    }
+    // Already correct
+    out.push(`${title} | ${types[0]} | ${imdbIds[0]}`);
   }
 
   return out.join("\n");
