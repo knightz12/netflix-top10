@@ -177,6 +177,20 @@ function readWatchlist() {
   }
 }
 
+async function getMetaByImdbId(imdbId, type) {
+  try {
+    const url = `https://v3-cinemeta.strem.io/meta/${type}/${imdbId}.json`;
+
+    const res = await fetch(url);
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    return data.meta || null;
+  } catch {
+    return null;
+  }
+}
+
 async function getMetaByImdbId(imdbId, type = "series") {
   try {
     const url = `https://v3-cinemeta.strem.io/meta/${type}/${imdbId}.json`;
@@ -273,19 +287,11 @@ async function getWatchlistCatalog() {
 
       if (imdbId) {
         found = await getMetaByImdbId(imdbId, "series");
-
-        if (!found) {
-          found = await getMetaByImdbId(imdbId, "movie");
-        }
+        if (!found) found = await getMetaByImdbId(imdbId, "movie");
       }
 
-      if (!found) {
-        found = await searchCinemeta(title, "series");
-      }
-
-      if (!found) {
-        found = await searchCinemeta(title, "movie");
-      }
+      if (!found) found = await searchCinemeta(title, "series");
+      if (!found) found = await searchCinemeta(title, "movie");
 
       if (found && found.id) {
         metas.push({
@@ -303,7 +309,7 @@ async function getWatchlistCatalog() {
           description: "From watchlist.txt",
         });
       }
-    } catch (e) {
+    } catch {
       metas.push({
         id: `watchlist-${i + 1}`,
         type: "series",
