@@ -41,24 +41,39 @@ router.post("/classify", async (req, res) => {
     for (const line of lines) {
       if (line.startsWith("#")) continue;
 
-      const title = line.split("|")[0].trim();
+      const parts = line.split("|").map(p => p.trim());
+      const title = parts[0];
+      const imdbId = parts[1];
 
-      let mMovie = null;
-      let mSeries = null;
+      // ✅ 1. If has IMDb → use REAL data
+      if (imdbId && imdbId.startsWith("tt")) {
+        try {
+          const resMovie = await fetch(`https://v3-cinemeta.strem.io/meta/movie/${imdbId}.json`);
+          if (resMovie.ok) {
+            movie.push(line);
+            continue;
+          }
 
+          const resSeries = await fetch(`https://v3-cinemeta.strem.io/meta/series/${imdbId}.json`);
+          if (resSeries.ok) {
+            series.push(line);
+            continue;
+          }
+        } catch {}
+      }
+
+      // ❗ fallback (no imdb or failed)
       try {
-        mMovie = await searchCinemeta(title, "movie");
-        mSeries = await searchCinemeta(title, "series");
-      } catch {}
+        const m = await searchCinemeta(title, "series") || await searchCinemeta(title, "movie");
 
-      if (mMovie && !mSeries) {
-        movie.push(line);
-      } else if (mSeries && !mMovie) {
-        series.push(line);
-      } else if (mMovie && mSeries) {
-        // Prefer series (most Kdrama)
-        series.push(line);
-      } else {
+        if (m?.type === "series") {
+          series.push(line);
+        } else if (m?.type === "movie") {
+          movie.push(line);
+        } else {
+          unknown.push(line);
+        }
+      } catch {
         unknown.push(line);
       }
     }
