@@ -8,10 +8,15 @@ const { readRaw } = require("../services/watchlist");
 
 const manifest = {
   id: "org.netflix.kdrama.fixed",
-  version: "13.1.1",
+  version: "13.1.2",
   name: "Netflix PH + Kdrama Watchlist",
+  description: "Netflix PH Top 10 + Kdrama Watchlist",
   resources: ["catalog"],
   types: ["movie", "series"],
+
+  // 🔥 REQUIRED FOR STREMIO
+  idPrefixes: ["tt"],
+
   catalogs: [
     {
       type: "movie",
