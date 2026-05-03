@@ -100,13 +100,33 @@ async function searchCinemeta(title, type) {
 /* ---------------- AUTO IMDb ---------------- */
 
 async function autoImdb(text) {
-  const lines = text.split("\n");
+  const lines = text.split(/\r?\n/);
   const out = [];
 
   for (const l of lines) {
-    if (!l.trim()) continue;
+    const line = l.trim();
 
-    const title = l.split("|")[0].trim();
+    // keep blank lines
+    if (!line) {
+      out.push("");
+      continue;
+    }
+
+    // keep headers/comments
+    if (line.startsWith("#")) {
+      out.push(line);
+      continue;
+    }
+
+    const parts = line.split("|").map((p) => p.trim());
+    const title = parts[0];
+    const existingImdb = parts[1];
+
+    // keep already matched IMDb
+    if (existingImdb && existingImdb.startsWith("tt")) {
+      out.push(`${title} | ${existingImdb}`);
+      continue;
+    }
 
     const m =
       (await searchCinemeta(title, "series")) ||
@@ -115,7 +135,7 @@ async function autoImdb(text) {
     if (m?.id) {
       out.push(`${title} | ${m.id}`);
     } else {
-      out.push(title);
+      out.push(title); // keep title, never blank
     }
   }
 
