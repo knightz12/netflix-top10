@@ -8,7 +8,7 @@ const { readRaw } = require("../services/watchlist");
 
 const manifest = {
   id: "org.netflix.kdrama.fixed",
-  version: "13.2.0",
+  version: "13.2.1",
   name: "Netflix PH + Kdrama Watchlist",
   description: "Netflix PH Top 10 + Kdrama Watchlist",
   resources: ["catalog"],
@@ -87,7 +87,7 @@ router.get("/edit", (req, res) => {
       color:white;
     }
 
-    button, .btn {
+    button {
       background:#e50914;
       border:0;
       color:white;
@@ -121,7 +121,7 @@ router.get("/edit", (req, res) => {
   <h1>Watchlist Editor</h1>
   <div class="hint">Format: Title | tt1234567</div>
 
-  <form method="POST" id="form">
+  <form method="POST">
     <div class="toolbar">
       <input id="search" placeholder="Search..." oninput="filter()">
 
@@ -142,6 +142,7 @@ router.get("/edit", (req, res) => {
 <script>
 let original = document.getElementById("box").value;
 
+/* -------- FILTER -------- */
 function filter() {
   const q = document.getElementById("search").value.toLowerCase();
   const box = document.getElementById("box");
@@ -153,6 +154,7 @@ function filter() {
     .join("\\n");
 }
 
+/* -------- SORT -------- */
 function sortAZ() {
   const lines = original.split("\\n").filter(Boolean);
   lines.sort((a,b)=>a.localeCompare(b));
@@ -182,6 +184,7 @@ function update(lines){
   original = box.value;
 }
 
+/* -------- AUTO IMDb FIXED -------- */
 async function autoIMDb() {
   const box = document.getElementById("box");
   const status = document.getElementById("status");
@@ -190,8 +193,11 @@ async function autoIMDb() {
 
   try {
     const res = await fetch('/api/imdb', {
-      method:'POST',
-      body:box.value
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain'
+      },
+      body: box.value
     });
 
     const text = await res.text();
