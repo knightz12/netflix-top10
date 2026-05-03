@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 const cheerio = require("cheerio");
+const fs = require("fs");
+const path = require("path");
 const { createCanvas, loadImage } = require("canvas");
 
 const app = express();
@@ -8,27 +10,24 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 
-const MDL_USERNAME = "knightz12";
-
 const URLS = {
   movie: "https://www.netflix.com/tudum/top10/philippines",
   series: "https://www.netflix.com/tudum/top10/philippines/tv",
 };
 
+const WATCHLIST_FILE = path.join(__dirname, "watchlist.txt");
 const CACHE_MS = 6 * 60 * 60 * 1000;
 
 let cache = {
   movie: { time: 0, metas: [] },
   series: { time: 0, metas: [] },
-  mdl_watchlist: { time: 0, metas: [] },
-  mdl_completed: { time: 0, metas: [] },
 };
 
 const manifest = {
-  id: "org.netflix.mdl.combo.knightz12",
-  version: "6.0.0",
-  name: "Netflix PH + MyDramaList",
-  description: "Netflix PH Top 10 + MyDramaList catalogs",
+  id: "org.netflix.mdl.combo.watchlist",
+  version: "7.0.0",
+  name: "Netflix PH + Watchlist",
+  description: "Netflix PH Top 10 + manual watchlist.txt catalog",
   resources: ["catalog"],
   types: ["movie", "series"],
   catalogs: [
@@ -45,12 +44,7 @@ const manifest = {
     {
       type: "series",
       id: "mdl_watchlist",
-      name: "MDL Plan To Watch",
-    },
-    {
-      type: "series",
-      id: "mdl_completed",
-      name: "MDL Completed",
+      name: "My Watchlist",
     },
   ],
 };
@@ -62,23 +56,24 @@ function cleanTitle(title) {
     .trim();
 }
 
+function cleanForSearch(title) {
+  return String(title || "")
+    .replace(/:\s*Season.*$/i, "")
+    .replace(/:\s*Limited Series$/i, "")
+    .replace(/\(\d{4}\)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 async function fetchHtml(url) {
   const res = await fetch(url, {
     headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-      "Accept":
-        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
       "Accept-Language": "en-US,en;q=0.9",
-      "Referer": "https://mydramalist.com/",
-      "Connection": "keep-alive"
     },
   });
 
-  if (!res.ok) {
-    throw new Error(`MDL HTTP ${res.status}`);
-  }
-
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
   return await res.text();
 }
 
@@ -169,13 +164,22 @@ async function fetchNetflix(type) {
   };
 }
 
-function cleanForSearch(title) {
-  return String(title || "")
-    .replace(/:\s*Season.*$/i, "")
-    .replace(/:\s*Limited Series$/i, "")
-    .replace(/\(\d{4}\)/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+function readWatchlist() {
+  try {
+    if (!fs.existsSync(WATCHLIST_FILE)) {
+      fs.writeFileSync(WATCHLIST_FILE, "", "utf-8");
+      return [];
+    }
+
+    return fs
+      .readFileSync(WATCHLIST_FILE, "utf-8")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"));
+  } catch (e) {
+    console.error("watchlist.txt read error:", e.message);
+    return [];
+  }
 }
 
 async function searchCinemeta(title, type) {
@@ -267,50 +271,8 @@ async function getNetflixCatalog(type, req) {
   return metas;
 }
 
-async function fetchMDLList(username, listType) {
-  try {
-    const url = `https://mydramalist.com/dramalist/${username}/${listType}`;
-    const html = await fetchHtml(url);
-    const $ = cheerio.load(html);
-
-    const titles = [];
-
-    // MDL usually stores drama titles in these links
-    $("a[href^='/']").each((_, el) => {
-      const href = $(el).attr("href") || "";
-      const title = cleanTitle($(el).text());
-
-      if (
-        title &&
-        href.match(/^\/\d+-/) &&
-        title.length > 1 &&
-        !title.toLowerCase().includes("edit") &&
-        !title.toLowerCase().includes("add") &&
-        !title.toLowerCase().includes("more") &&
-        !title.toLowerCase().includes("review") &&
-        !titles.includes(title)
-      ) {
-        titles.push(title);
-      }
-    });
-
-    console.log("MDL titles found:", titles);
-
-    return titles.slice(0, 100);
-  } catch (e) {
-    console.error("MDL fetch failed:", e.message);
-    return [];
-  }
-}
-
-async function getMDLCatalog(cacheKey, listType) {
-  const now = Date.now();
-
-  if (cache[cacheKey].metas.length && now - cache[cacheKey].time < CACHE_MS) {
-    return cache[cacheKey].metas;
-  }
-
-  const titles = await fetchMDLList(MDL_USERNAME, listType);
+async function getWatchlistCatalog() {
+  const titles = readWatchlist();
   const metas = [];
 
   for (let i = 0; i < titles.length; i++) {
@@ -327,29 +289,32 @@ async function getMDLCatalog(cacheKey, listType) {
         ...found,
         type: found.type || "series",
         name: `⭐ ${found.name}`,
-        description:
-          `From MyDramaList: ${listType.replace(/_/g, " ")}\n\n` +
-          (found.description || ""),
+        description: `From watchlist.txt\n\n${found.description || ""}`,
       });
     } else {
       metas.push({
-        id: `mdl-${listType}-${i + 1}-${title
+        id: `watchlist-${i + 1}-${title
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")}`,
         type: "series",
         name: `⭐ ${title}`,
         poster: "",
-        description: `From MyDramaList: ${listType.replace(/_/g, " ")}`,
+        description: "From watchlist.txt",
       });
     }
   }
 
-  cache[cacheKey] = { time: now, metas };
   return metas;
 }
 
 app.get("/", (req, res) => {
-  res.send("Netflix PH + MDL Stremio addon running");
+  res.send(`
+    <h2>Netflix PH + Watchlist addon running</h2>
+    <p><a href="/manifest.json">Manifest</a></p>
+    <p><a href="/debug/watchlist">Watchlist Debug</a></p>
+    <p><a href="/debug/netflix/movie">Netflix Movie Debug</a></p>
+    <p><a href="/debug/netflix/series">Netflix Series Debug</a></p>
+  `);
 });
 
 app.get("/manifest.json", (req, res) => {
@@ -438,15 +403,7 @@ app.get("/catalog/:type/:id.json", async (req, res) => {
     }
 
     if (type === "series" && id === "mdl_watchlist") {
-      return res.json({
-        metas: await getMDLCatalog("mdl_watchlist", "plan_to_watch"),
-      });
-    }
-
-    if (type === "series" && id === "mdl_completed") {
-      return res.json({
-        metas: await getMDLCatalog("mdl_completed", "completed"),
-      });
+      return res.json({ metas: await getWatchlistCatalog() });
     }
 
     return res.json({ metas: [] });
@@ -462,10 +419,13 @@ app.get("/debug/netflix/:type", async (req, res) => {
   res.json(data);
 });
 
-app.get("/debug/mdl/:list", async (req, res) => {
-  const list = req.params.list || "plan_to_watch";
-  const titles = await fetchMDLList(MDL_USERNAME, list);
-  res.json({ username: MDL_USERNAME, list, count: titles.length, titles });
+app.get("/debug/watchlist", (req, res) => {
+  const titles = readWatchlist();
+  res.json({
+    file: "watchlist.txt",
+    count: titles.length,
+    titles,
+  });
 });
 
 app.listen(PORT, "0.0.0.0", () => {
