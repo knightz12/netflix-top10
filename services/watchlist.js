@@ -1,6 +1,5 @@
 const fs = require("fs");
 const { WATCHLIST_FILE } = require("../config");
-const { searchCinemeta } = require("./imdb");
 
 function readRaw() {
   if (!fs.existsSync(WATCHLIST_FILE)) {
@@ -13,31 +12,17 @@ function readRaw() {
 function parseWatchlist() {
   return readRaw()
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith("#"))
-    .map((line) => {
-      const parts = line.split("|").map((p) => p.trim());
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith("#"))
+    .map(line => {
+      const parts = line.split("|").map(p => p.trim());
 
       return {
         title: parts[0],
-        imdbId: parts[1] && parts[1].startsWith("tt") ? parts[1] : null,
+        type: parts[1],     // 🔥 important
+        imdbId: parts[2],
       };
     });
-}
-
-async function getMetaByImdbId(imdbId, type) {
-  try {
-    const res = await fetch(
-      `https://v3-cinemeta.strem.io/meta/${type}/${imdbId}.json`
-    );
-
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    return data.meta || null;
-  } catch {
-    return null;
-  }
 }
 
 async function getWatchlist(targetType) {
@@ -45,27 +30,15 @@ async function getWatchlist(targetType) {
   const metas = [];
 
   for (const item of items) {
-    let meta = null;
+    if (!item.imdbId || !item.type) continue;
+    if (item.type !== targetType) continue;
 
-    // ✅ 1. Use IMDb FIRST (most accurate)
-    if (item.imdbId) {
-      meta = await getMetaByImdbId(item.imdbId, "series");
-      if (!meta) meta = await getMetaByImdbId(item.imdbId, "movie");
-    }
-
-    // ✅ 2. Fallback search
-    if (!meta) {
-      meta = await searchCinemeta(item.title, "series");
-      if (!meta) meta = await searchCinemeta(item.title, "movie");
-    }
-
-    // ✅ 3. ONLY push if type matches target
-    if (meta && meta.id && meta.type === targetType) {
-      metas.push({
-        ...meta,
-        type: targetType,
-      });
-    }
+    metas.push({
+      id: item.imdbId,
+      type: item.type,
+      name: item.title,
+      poster: `https://images.metahub.space/poster/medium/${item.imdbId}/img`,
+    });
   }
 
   return metas;

@@ -1,29 +1,61 @@
 const express = require("express");
 const router = express.Router();
-const { autoImdb, searchCinemeta } = require("../services/imdb");
+const { searchCinemeta } = require("../services/imdb");
 
-/* ---------------- AUTO IMDb ---------------- */
+/* ---------------- AUTO IMDb + TYPE ---------------- */
 
 router.post("/imdb", async (req, res) => {
   try {
     const text = typeof req.body === "string" ? req.body : "";
 
-    if (!text.trim()) {
-      return res
-        .status(400)
-        .type("text/plain")
-        .send("No watchlist text received");
+    const lines = text.split(/\r?\n/);
+    const out = [];
+
+    for (const l of lines) {
+      const line = l.trim();
+
+      if (!line) {
+        out.push("");
+        continue;
+      }
+
+      if (line.startsWith("#")) {
+        out.push(line);
+        continue;
+      }
+
+      const parts = line.split("|").map(p => p.trim());
+      const title = parts[0];
+      const existingType = parts[1];
+      const existingId = parts[2] || parts[1];
+
+      // already formatted
+      if (existingId && existingId.startsWith("tt") && existingType) {
+        out.push(`${title} | ${existingType} | ${existingId}`);
+        continue;
+      }
+
+      const mSeries = await searchCinemeta(title, "series");
+      const mMovie = await searchCinemeta(title, "movie");
+
+      let meta = mSeries || mMovie;
+
+      if (meta?.id) {
+        const type = mSeries ? "series" : "movie";
+        out.push(`${title} | ${type} | ${meta.id}`);
+      } else {
+        out.push(title);
+      }
     }
 
-    const result = await autoImdb(text);
-    res.type("text/plain").send(result);
+    res.type("text/plain").send(out.join("\n"));
   } catch (e) {
-    console.error("Auto IMDb error:", e);
-    res.status(500).type("text/plain").send("Auto IMDb failed: " + e.message);
+    console.error(e);
+    res.status(500).send("Auto IMDb failed");
   }
 });
 
-/* ---------------- SMART TYPE CLASSIFIER ---------------- */
+/* ---------------- CLASSIFY (NO GUESSING) ---------------- */
 
 router.post("/classify", async (req, res) => {
   try {
@@ -31,7 +63,7 @@ router.post("/classify", async (req, res) => {
 
     const lines = text
       .split(/\r?\n/)
-      .map((l) => l.trim())
+      .map(l => l.trim())
       .filter(Boolean);
 
     const movie = [];
@@ -42,45 +74,18 @@ router.post("/classify", async (req, res) => {
       if (line.startsWith("#")) continue;
 
       const parts = line.split("|").map(p => p.trim());
+
       const title = parts[0];
-      const imdbId = parts[1];
+      const type = parts[1];
 
-      // ✅ 1. If has IMDb → use REAL data
-      if (imdbId && imdbId.startsWith("tt")) {
-        try {
-          const resMovie = await fetch(`https://v3-cinemeta.strem.io/meta/movie/${imdbId}.json`);
-          if (resMovie.ok) {
-            movie.push(line);
-            continue;
-          }
-
-          const resSeries = await fetch(`https://v3-cinemeta.strem.io/meta/series/${imdbId}.json`);
-          if (resSeries.ok) {
-            series.push(line);
-            continue;
-          }
-        } catch {}
-      }
-
-      // ❗ fallback (no imdb or failed)
-      try {
-        const m = await searchCinemeta(title, "series") || await searchCinemeta(title, "movie");
-
-        if (m?.type === "series") {
-          series.push(line);
-        } else if (m?.type === "movie") {
-          movie.push(line);
-        } else {
-          unknown.push(line);
-        }
-      } catch {
-        unknown.push(line);
-      }
+      if (type === "movie") movie.push(line);
+      else if (type === "series") series.push(line);
+      else unknown.push(line);
     }
 
     res.json({ movie, series, unknown });
   } catch (e) {
-    console.error("Classify error:", e);
+    console.error(e);
     res.status(500).json({ movie: [], series: [], unknown: [] });
   }
 });
