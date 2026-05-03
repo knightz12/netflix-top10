@@ -11,7 +11,7 @@ router.get("/:type/:id.json", async (req, res) => {
   try {
     // ✅ Netflix Movies
     if (type === "movie" && id === "netflix_movies") {
-      const titles = await fetchNetflixTitles();
+      const titles = await fetchNetflixTitles("movie");
       const metas = [];
 
       for (const t of titles) {
@@ -30,7 +30,7 @@ router.get("/:type/:id.json", async (req, res) => {
 
     // ✅ Netflix Series
     if (type === "series" && id === "netflix_series") {
-      const titles = await fetchNetflixTitles();
+      const titles = await fetchNetflixTitles("series");
       const metas = [];
 
       for (const t of titles) {

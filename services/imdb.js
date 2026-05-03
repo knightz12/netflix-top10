@@ -2,12 +2,43 @@ const cheerio = require("cheerio");
 
 /* ---------------- NETFLIX TITLES ---------------- */
 
-async function fetchNetflixTitles() {
+async function fetchNetflixTitles(type = "movie") {
   try {
-    const res = await fetch("https://www.netflix.com/tudum/top10/philippines");
+    const url =
+      type === "series"
+        ? "https://www.netflix.com/tudum/top10/philippines/tv"
+        : "https://www.netflix.com/tudum/top10/philippines";
+
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+
+    if (!res.ok) return [];
+
     const html = await res.text();
 
-    const $ = cheerio.load(html);
+    const sectionTitle =
+      type === "series"
+        ? "Top 10 Shows in Philippines"
+        : "Top 10 Movies in Philippines";
+
+    const overviewTitle =
+      type === "series"
+        ? "Top 10 Shows in Philippines overview"
+        : "Top 10 Movies in Philippines overview";
+
+    let start = html.indexOf(sectionTitle);
+    let end = html.indexOf(overviewTitle);
+
+    if (start === -1) start = 0;
+    if (end === -1 || end < start) end = html.length;
+
+    const sectionHtml = html.slice(start, end);
+    const $ = cheerio.load(sectionHtml);
+
     const titles = [];
 
     $("img[alt]").each((_, el) => {
@@ -15,7 +46,11 @@ async function fetchNetflixTitles() {
         .replace(/^Image:\s*/i, "")
         .trim();
 
-      if (t && !titles.includes(t)) {
+      if (
+        t &&
+        !t.toLowerCase().includes("netflix") &&
+        !titles.includes(t)
+      ) {
         titles.push(t);
       }
     });
@@ -31,8 +66,14 @@ async function fetchNetflixTitles() {
 
 async function searchCinemeta(title, type) {
   try {
+    const clean = String(title || "")
+      .replace(/:\s*Season.*$/i, "")
+      .replace(/:\s*Limited Series$/i, "")
+      .replace(/\(\d{4}\)/g, "")
+      .trim();
+
     const res = await fetch(
-      `https://v3-cinemeta.strem.io/catalog/${type}/top/search=${encodeURIComponent(title)}.json`
+      `https://v3-cinemeta.strem.io/catalog/${type}/top/search=${encodeURIComponent(clean)}.json`
     );
 
     if (!res.ok) return null;
@@ -45,7 +86,11 @@ async function searchCinemeta(title, type) {
 
     if (!metas.length) return null;
 
-    return metas[0];
+    const exact = metas.find(
+      (m) => m.name && m.name.toLowerCase().trim() === clean.toLowerCase()
+    );
+
+    return exact || metas[0];
   } catch (e) {
     console.error("Cinemeta search error:", e);
     return null;
