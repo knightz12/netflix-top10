@@ -10,48 +10,74 @@ router.get("/:type/:id.json", async (req, res) => {
 
   try {
     // ✅ Netflix Movies
-    if (id === "netflix_movies") {
+    if (type === "movie" && id === "netflix_movies") {
       const titles = await fetchNetflixTitles();
       const metas = [];
 
       for (const t of titles) {
         const m = await searchCinemeta(t, "movie");
-        if (m) metas.push(m);
+
+        if (m && m.id) {
+          metas.push({
+            ...m,
+            type: "movie",
+          });
+        }
       }
 
       return res.json({ metas });
     }
 
     // ✅ Netflix Series
-    if (id === "netflix_series") {
+    if (type === "series" && id === "netflix_series") {
       const titles = await fetchNetflixTitles();
       const metas = [];
 
       for (const t of titles) {
         const m = await searchCinemeta(t, "series");
-        if (m) metas.push(m);
+
+        if (m && m.id) {
+          metas.push({
+            ...m,
+            type: "series",
+          });
+        }
       }
 
       return res.json({ metas });
     }
 
     // ✅ Kdrama Movies
-    if (id === "kdrama_movies") {
+    if (type === "movie" && id === "kdrama_movies") {
+      const metas = await getWatchlist("movie");
+
       return res.json({
-        metas: await getWatchlist("movie"),
+        metas: metas
+          .filter((m) => m && m.id)
+          .map((m) => ({
+            ...m,
+            type: "movie",
+          })),
       });
     }
 
     // ✅ Kdrama Series
-    if (id === "kdrama_series") {
+    if (type === "series" && id === "kdrama_series") {
+      const metas = await getWatchlist("series");
+
       return res.json({
-        metas: await getWatchlist("series"),
+        metas: metas
+          .filter((m) => m && m.id)
+          .map((m) => ({
+            ...m,
+            type: "series",
+          })),
       });
     }
 
     return res.json({ metas: [] });
   } catch (e) {
-    console.error(e);
+    console.error("Catalog error:", e);
     return res.json({ metas: [] });
   }
 });
