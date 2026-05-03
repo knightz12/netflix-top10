@@ -11,212 +11,77 @@ app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.text());
 
+const WATCHLIST_FILE = path.join(__dirname, "watchlist.txt");
+
 const URLS = {
   movie: "https://www.netflix.com/tudum/top10/philippines",
   series: "https://www.netflix.com/tudum/top10/philippines/tv",
 };
 
-const WATCHLIST_FILE = path.join(__dirname, "watchlist.txt");
-const CACHE_MS = 6 * 60 * 60 * 1000;
-
-let cache = {
-  movie: { time: 0, metas: [] },
-  series: { time: 0, metas: [] },
-};
-
 const manifest = {
-  id: "org.netflix.mdl.combo.editor",
-  version: "9.0.0",
+  id: "org.netflix.watchlist.advanced",
+  version: "10.0.0",
   name: "Netflix PH + Watchlist",
-  description: "Netflix PH Top 10 + editable watchlist catalog",
+  description: "Netflix PH Top 10 + Advanced Watchlist Editor",
   resources: ["catalog"],
   types: ["movie", "series"],
   catalogs: [
-    {
-      type: "movie",
-      id: "netflix_ph_top10_movies",
-      name: "Netflix PH Top 10 Movies",
-    },
-    {
-      type: "series",
-      id: "netflix_ph_top10_series",
-      name: "Netflix PH Top 10 Series",
-    },
-    {
-      type: "series",
-      id: "mdl_watchlist",
-      name: "My Watchlist",
-    },
+    { type: "movie", id: "netflix_movies", name: "Netflix PH Movies" },
+    { type: "series", id: "netflix_series", name: "Netflix PH Series" },
+    { type: "series", id: "watchlist", name: "My Watchlist" },
   ],
 };
 
-function cleanTitle(title) {
-  return String(title || "")
-    .replace(/^Image:\s*/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
+function cleanTitle(t) {
+  return String(t || "").replace(/^Image:\s*/i, "").trim();
 }
 
-function cleanForSearch(title) {
-  return String(title || "")
-    .replace(/:\s*Season.*$/i, "")
-    .replace(/:\s*Limited Series$/i, "")
-    .replace(/\(\d{4}\)/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+function cleanSearch(t) {
+  return t.replace(/\(\d{4}\)/g, "").trim();
 }
 
 async function fetchHtml(url) {
   const res = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-      "Accept-Language": "en-US,en;q=0.9",
-    },
+    headers: { "User-Agent": "Mozilla/5.0" },
   });
-
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
   return await res.text();
 }
 
-function extractNetflixTitles(html, type) {
+function extractTitles(html) {
   const $ = cheerio.load(html);
-
-  const sectionTitle =
-    type === "movie"
-      ? "Top 10 Movies in Philippines"
-      : "Top 10 Shows in Philippines";
-
-  const overviewTitle =
-    type === "movie"
-      ? "Top 10 Movies in Philippines overview"
-      : "Top 10 Shows in Philippines overview";
-
-  let start = html.indexOf(sectionTitle);
-  let end = html.indexOf(overviewTitle);
-
-  if (start === -1) start = 0;
-  if (end === -1 || end < start) end = html.length;
-
-  const sectionHtml = html.slice(start, end);
-  const $$ = cheerio.load(sectionHtml);
-
   const titles = [];
 
-  $$("img[alt]").each((_, img) => {
-    const alt = cleanTitle($$(img).attr("alt"));
-
-    if (
-      alt &&
-      !alt.toLowerCase().includes("netflix") &&
-      !titles.includes(alt)
-    ) {
-      titles.push(alt);
-    }
+  $("img[alt]").each((_, el) => {
+    const t = cleanTitle($(el).attr("alt"));
+    if (t && !titles.includes(t)) titles.push(t);
   });
-
-  const rawAltRegex = /alt=["']Image:\s*([^"']+)["']/gi;
-  let m;
-
-  while ((m = rawAltRegex.exec(sectionHtml)) !== null) {
-    const title = cleanTitle(m[1]);
-    if (title && !titles.includes(title)) titles.push(title);
-  }
-
-  if (titles.length < 10) {
-    const text = $("body").text().replace(/\s+/g, " ");
-    const overviewStart = text.indexOf(overviewTitle);
-    const catchStart = text.indexOf("Catch the Latest", overviewStart);
-
-    let block =
-      overviewStart !== -1
-        ? text.slice(overviewStart, catchStart !== -1 ? catchStart : undefined)
-        : text;
-
-    const regex =
-      /\b(01|02|03|04|05|06|07|08|09|10)\s*(?:Image)?\s*(.+?)\s+\d+(?=\s*(01|02|03|04|05|06|07|08|09|10)\s*(?:Image)?|$)/g;
-
-    let match;
-    while ((match = regex.exec(block)) !== null) {
-      const title = cleanTitle(match[2]);
-      if (title && !titles.includes(title)) titles.push(title);
-    }
-  }
 
   return titles.slice(0, 10);
 }
 
 async function fetchNetflix(type) {
   const html = await fetchHtml(URLS[type]);
-
-  return {
-    titles: extractNetflixTitles(html, type),
-  };
-}
-
-function readWatchlistRaw() {
-  try {
-    if (!fs.existsSync(WATCHLIST_FILE)) {
-      fs.writeFileSync(WATCHLIST_FILE, "", "utf-8");
-    }
-
-    return fs.readFileSync(WATCHLIST_FILE, "utf-8");
-  } catch {
-    return "";
-  }
-}
-
-function readWatchlist() {
-  return readWatchlistRaw()
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith("#"))
-    .map((line) => {
-      const parts = line.split("|").map((p) => p.trim());
-
-      return {
-        title: parts[0],
-        imdbId: parts[1] && parts[1].startsWith("tt") ? parts[1] : null,
-      };
-    });
+  return extractTitles(html);
 }
 
 async function searchCinemeta(title, type) {
   try {
-    const clean = cleanForSearch(title);
-
     const url = `https://v3-cinemeta.strem.io/catalog/${type}/top/search=${encodeURIComponent(
-      clean
+      cleanSearch(title)
     )}.json`;
 
     const res = await fetch(url);
-    if (!res.ok) return null;
-
     const data = await res.json();
-    const metas = data.metas || [];
-
-    if (!metas.length) return null;
-
-    const exact = metas.find(
-      (m) => m.name && m.name.toLowerCase().trim() === clean.toLowerCase()
-    );
-
-    const contains = metas.find(
-      (m) => m.name && m.name.toLowerCase().includes(clean.toLowerCase())
-    );
-
-    return exact || contains || metas[0];
+    return data.metas?.[0] || null;
   } catch {
     return null;
   }
 }
 
-async function getMetaByImdbId(imdbId, type) {
+async function getMetaByImdbId(id, type) {
   try {
-    const url = `https://v3-cinemeta.strem.io/meta/${type}/${imdbId}.json`;
-
+    const url = `https://v3-cinemeta.strem.io/meta/${type}/${id}.json`;
     const res = await fetch(url);
-    if (!res.ok) return null;
-
     const data = await res.json();
     return data.meta || null;
   } catch {
@@ -224,252 +89,141 @@ async function getMetaByImdbId(imdbId, type) {
   }
 }
 
-async function getNetflixCatalog(type) {
-  const now = Date.now();
+/* ---------------- WATCHLIST ---------------- */
 
-  if (cache[type].metas.length && now - cache[type].time < CACHE_MS) {
-    return cache[type].metas;
-  }
-
-  const { titles } = await fetchNetflix(type);
-  const metas = [];
-
-  for (let i = 0; i < titles.length; i++) {
-    const rank = i + 1;
-    const title = titles[i];
-
-    const found = await searchCinemeta(title, type);
-
-    if (found && found.id) {
-      metas.push({
-        ...found,
-        type,
-        name: found.name,
-        description: found.description || "Netflix Philippines Top 10",
-      });
-    } else {
-      metas.push({
-        id: `netflix-ph-${type}-${rank}-${title
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")}`,
-        type,
-        name: title,
-        poster: "",
-        description: "Netflix Philippines Top 10",
-      });
-    }
-  }
-
-  cache[type] = { time: now, metas };
-  return metas;
+function readRaw() {
+  if (!fs.existsSync(WATCHLIST_FILE)) fs.writeFileSync(WATCHLIST_FILE, "");
+  return fs.readFileSync(WATCHLIST_FILE, "utf-8");
 }
 
-async function getWatchlistCatalog() {
-  const items = readWatchlist();
+function readParsed() {
+  return readRaw()
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => {
+      const p = l.split("|").map((x) => x.trim());
+      return { title: p[0], imdb: p[1] || null };
+    });
+}
+
+async function getWatchlist() {
+  const items = readParsed();
   const metas = [];
 
   for (let i = 0; i < items.length; i++) {
-    const { title, imdbId } = items[i];
+    const { title, imdb } = items[i];
 
-    try {
-      let found = null;
+    let meta = null;
 
-      if (imdbId) {
-        found = await getMetaByImdbId(imdbId, "series");
-        if (!found) found = await getMetaByImdbId(imdbId, "movie");
-      }
-
-      if (!found) found = await searchCinemeta(title, "series");
-      if (!found) found = await searchCinemeta(title, "movie");
-
-      if (found && found.id) {
-        metas.push({
-          ...found,
-          type: found.type || "series",
-          name: found.name,
-          description: found.description || "From watchlist.txt",
-        });
-      } else {
-        metas.push({
-          id: `watchlist-${i + 1}`,
-          type: "series",
-          name: title,
-          poster: "",
-          description: "From watchlist.txt",
-        });
-      }
-    } catch (e) {
-      metas.push({
-        id: `watchlist-${i + 1}`,
-        type: "series",
-        name: title,
-        poster: "",
-        description: "From watchlist.txt",
-      });
+    if (imdb) {
+      meta = await getMetaByImdbId(imdb, "series");
+      if (!meta) meta = await getMetaByImdbId(imdb, "movie");
     }
+
+    if (!meta) meta = await searchCinemeta(title, "series");
+    if (!meta) meta = await searchCinemeta(title, "movie");
+
+    metas.push(
+      meta
+        ? { ...meta }
+        : { id: "wl" + i, type: "series", name: title }
+    );
   }
 
   return metas;
 }
 
-function escapeHtml(text) {
-  return String(text || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+/* ---------------- SORTING ---------------- */
+
+function sortLines(content, mode) {
+  let lines = content
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  if (mode === "az") {
+    lines.sort((a, b) => a.localeCompare(b));
+  } else if (mode === "type") {
+    const movies = [];
+    const series = [];
+
+    lines.forEach((l) => {
+      l.toLowerCase().includes("movie")
+        ? movies.push(l)
+        : series.push(l);
+    });
+
+    lines = ["# Movies", ...movies, "", "# Series", ...series];
+  } else {
+    lines = lines.reverse();
+  }
+
+  return lines.join("\n");
 }
 
-app.get("/", (req, res) => {
-  res.send(`
-    <h2>Netflix PH + Watchlist addon running</h2>
-    <p><a href="/manifest.json">Manifest</a></p>
-    <p><a href="/edit">Edit Watchlist</a></p>
-    <p><a href="/debug/watchlist">Watchlist Debug</a></p>
-    <p><a href="/catalog/series/mdl_watchlist.json">Watchlist Catalog</a></p>
-    <p><a href="/debug/netflix/movie">Netflix Movie Debug</a></p>
-    <p><a href="/debug/netflix/series">Netflix Series Debug</a></p>
-  `);
-});
+/* ---------------- ROUTES ---------------- */
 
-app.get("/manifest.json", (req, res) => {
-  res.json(manifest);
-});
+app.get("/manifest.json", (req, res) => res.json(manifest));
 
 app.get("/catalog/:type/:id.json", async (req, res) => {
-  try {
-    const { type, id } = req.params;
+  const { type, id } = req.params;
 
-    if (type === "movie" && id === "netflix_ph_top10_movies") {
-      return res.json({ metas: await getNetflixCatalog("movie") });
-    }
+  if (id === "netflix_movies")
+    return res.json({
+      metas: await Promise.all(
+        (await fetchNetflix("movie")).map((t) =>
+          searchCinemeta(t, "movie")
+        )
+      ),
+    });
 
-    if (type === "series" && id === "netflix_ph_top10_series") {
-      return res.json({ metas: await getNetflixCatalog("series") });
-    }
+  if (id === "netflix_series")
+    return res.json({
+      metas: await Promise.all(
+        (await fetchNetflix("series")).map((t) =>
+          searchCinemeta(t, "series")
+        )
+      ),
+    });
 
-    if (type === "series" && id === "mdl_watchlist") {
-      return res.json({ metas: await getWatchlistCatalog() });
-    }
+  if (id === "watchlist")
+    return res.json({ metas: await getWatchlist() });
 
-    return res.json({ metas: [] });
-  } catch (err) {
-    console.error(err);
-    return res.json({ metas: [] });
-  }
+  res.json({ metas: [] });
 });
 
-app.get("/debug/netflix/:type", async (req, res) => {
-  const type = req.params.type === "series" ? "series" : "movie";
-  const data = await fetchNetflix(type);
-  res.json(data);
-});
+/* ---------------- EDITOR ---------------- */
 
-app.get("/debug/watchlist", (req, res) => {
-  const items = readWatchlist();
-  res.json({
-    file: "watchlist.txt",
-    count: items.length,
-    items,
-  });
-});
+function esc(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+}
 
 app.get("/edit", (req, res) => {
-  const content = readWatchlistRaw();
-  const saved = req.query.saved ? `<p class="saved">Saved!</p>` : "";
+  const mode = req.query.sort || "recent";
+  const content = sortLines(readRaw(), mode);
 
   res.send(`
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Watchlist Editor</title>
-  <style>
-    body {
-      background: #111;
-      color: white;
-      font-family: Arial, sans-serif;
-      padding: 24px;
-      max-width: 1100px;
-      margin: auto;
-    }
-    h1 {
-      margin-bottom: 4px;
-    }
-    .hint {
-      color: #bbb;
-      margin-bottom: 16px;
-    }
-    .saved {
-      background: #153d1f;
-      color: #8cff9a;
-      padding: 10px 14px;
-      border-radius: 8px;
-      display: inline-block;
-    }
-    textarea {
-      width: 100%;
-      height: 70vh;
-      background: #1b1b1b;
-      color: white;
-      border: 1px solid #444;
-      border-radius: 10px;
-      padding: 14px;
-      font-size: 15px;
-      line-height: 1.5;
-      box-sizing: border-box;
-      white-space: pre;
-    }
-    button {
-      margin-top: 14px;
-      background: #e50914;
-      color: white;
-      border: 0;
-      padding: 12px 22px;
-      border-radius: 8px;
-      font-size: 16px;
-      cursor: pointer;
-    }
-    a {
-      color: #ff5c5c;
-      margin-right: 12px;
-    }
-    code {
-      background: #222;
-      padding: 2px 6px;
-      border-radius: 5px;
-    }
-  </style>
-</head>
-<body>
-  <h1>Watchlist Editor</h1>
-  <p class="hint">
-    Format: <code>Title | ttIMDbID</code><br>
-    Example: <code>The Glory | tt21344706</code>
-  </p>
+<h1>Watchlist Editor</h1>
 
-  ${saved}
+<a href="/edit?sort=recent">Recent</a>
+<a href="/edit?sort=az">A-Z</a>
+<a href="/edit?sort=type">Movies/Series</a>
 
-  <form method="POST" action="/edit">
-    <textarea name="watchlist">${escapeHtml(content)}</textarea>
-    <br>
-    <button type="submit">Save Watchlist</button>
-  </form>
-
-  <p>
-    <a href="/debug/watchlist">Debug Watchlist</a>
-    <a href="/catalog/series/mdl_watchlist.json">Catalog JSON</a>
-    <a href="/manifest.json">Manifest</a>
-  </p>
-</body>
-</html>
+<form method="POST">
+<textarea name="data" style="width:100%;height:70vh">${esc(content)}</textarea>
+<br><button>Save</button>
+</form>
 `);
 });
 
 app.post("/edit", (req, res) => {
-  const content = req.body.watchlist || "";
-  fs.writeFileSync(WATCHLIST_FILE, content, "utf-8");
-  res.redirect("/edit?saved=1");
+  fs.writeFileSync(WATCHLIST_FILE, req.body.data);
+  res.redirect("/edit");
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Running: http://localhost:${PORT}/manifest.json`);
-});
+/* ---------------- START ---------------- */
+
+app.listen(PORT, () =>
+  console.log("Running on http://localhost:" + PORT)
+);
