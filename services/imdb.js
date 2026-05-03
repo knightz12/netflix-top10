@@ -117,30 +117,16 @@ async function autoImdb(text) {
     const parts = line.split("|").map((p) => p.trim());
     const title = parts[0];
 
-    const imdbIds = parts.filter((p) => p.startsWith("tt"));
-    const types = parts.filter((p) => p === "movie" || p === "series");
+    const mSeries = await searchCinemeta(title, "series");
+    const mMovie = await searchCinemeta(title, "movie");
 
-    // Fix broken lines:
-    // Title | tt123 | tt123
-    // Title | tt123
-    // Title | movie | tt123 | tt123
-    if (imdbIds.length !== 1 || types.length !== 1) {
-      const mSeries = await searchCinemeta(title, "series");
-      const mMovie = await searchCinemeta(title, "movie");
-
-      if (mSeries?.id) {
-        out.push(`${title} | series | ${mSeries.id}`);
-      } else if (mMovie?.id) {
-        out.push(`${title} | movie | ${mMovie.id}`);
-      } else {
-        out.push(title);
-      }
-
-      continue;
+    if (mSeries?.id) {
+      out.push(`${title} | series | ${mSeries.id}`);
+    } else if (mMovie?.id) {
+      out.push(`${title} | movie | ${mMovie.id}`);
+    } else {
+      out.push(title);
     }
-
-    // Already correct
-    out.push(`${title} | ${types[0]} | ${imdbIds[0]}`);
   }
 
   return out.join("\n");

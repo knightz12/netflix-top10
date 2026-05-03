@@ -2,13 +2,13 @@ const express = require("express");
 const router = express.Router();
 const { searchCinemeta } = require("../services/imdb");
 
-/* ---------------- AUTO IMDb + TYPE ---------------- */
+/* ---------------- AUTO IMDb + TYPE (FIXED) ---------------- */
 
 router.post("/imdb", async (req, res) => {
   try {
     const text = typeof req.body === "string" ? req.body : "";
-
     const lines = text.split(/\r?\n/);
+
     const out = [];
 
     for (const l of lines) {
@@ -26,23 +26,24 @@ router.post("/imdb", async (req, res) => {
 
       const parts = line.split("|").map(p => p.trim());
       const title = parts[0];
-      const existingType = parts[1];
-      const existingId = parts[2] || parts[1];
 
-      // already formatted
-      if (existingId && existingId.startsWith("tt") && existingType) {
-        out.push(`${title} | ${existingType} | ${existingId}`);
+      const types = parts.filter(p => p === "movie" || p === "series");
+      const imdbIds = parts.filter(p => p.startsWith("tt"));
+
+      // ✅ only keep if EXACTLY correct format
+      if (types.length === 1 && imdbIds.length === 1) {
+        out.push(`${title} | ${types[0]} | ${imdbIds[0]}`);
         continue;
       }
 
+      // 🔥 FIX broken lines (force rebuild)
       const mSeries = await searchCinemeta(title, "series");
       const mMovie = await searchCinemeta(title, "movie");
 
-      let meta = mSeries || mMovie;
-
-      if (meta?.id) {
-        const type = mSeries ? "series" : "movie";
-        out.push(`${title} | ${type} | ${meta.id}`);
+      if (mSeries?.id) {
+        out.push(`${title} | series | ${mSeries.id}`);
+      } else if (mMovie?.id) {
+        out.push(`${title} | movie | ${mMovie.id}`);
       } else {
         out.push(title);
       }
@@ -55,7 +56,7 @@ router.post("/imdb", async (req, res) => {
   }
 });
 
-/* ---------------- CLASSIFY (NO GUESSING) ---------------- */
+/* ---------------- CLASSIFY (TYPE BASED) ---------------- */
 
 router.post("/classify", async (req, res) => {
   try {
@@ -75,7 +76,6 @@ router.post("/classify", async (req, res) => {
 
       const parts = line.split("|").map(p => p.trim());
 
-      const title = parts[0];
       const type = parts[1];
 
       if (type === "movie") movie.push(line);
