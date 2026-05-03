@@ -162,10 +162,32 @@ function readWatchlist() {
       .readFileSync(WATCHLIST_FILE, "utf-8")
       .split(/\r?\n/)
       .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#"));
+      .filter((line) => line && !line.startsWith("#"))
+      .map((line) => {
+        const parts = line.split("|").map((p) => p.trim());
+
+        return {
+          title: parts[0],
+          imdbId: parts[1] && parts[1].startsWith("tt") ? parts[1] : null,
+        };
+      });
   } catch (e) {
     console.error("watchlist.txt read error:", e.message);
     return [];
+  }
+}
+
+async function getMetaByImdbId(imdbId, type = "series") {
+  try {
+    const url = `https://v3-cinemeta.strem.io/meta/${type}/${imdbId}.json`;
+
+    const res = await fetch(url);
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    return data.meta || null;
+  } catch {
+    return null;
   }
 }
 
@@ -240,14 +262,26 @@ async function getNetflixCatalog(type) {
 }
 
 async function getWatchlistCatalog() {
-  const titles = readWatchlist();
+  const items = readWatchlist();
   const metas = [];
 
-  for (let i = 0; i < titles.length; i++) {
-    const title = titles[i];
+  for (let i = 0; i < items.length; i++) {
+    const { title, imdbId } = items[i];
 
     try {
-      let found = await searchCinemeta(title, "series");
+      let found = null;
+
+      if (imdbId) {
+        found = await getMetaByImdbId(imdbId, "series");
+
+        if (!found) {
+          found = await getMetaByImdbId(imdbId, "movie");
+        }
+      }
+
+      if (!found) {
+        found = await searchCinemeta(title, "series");
+      }
 
       if (!found) {
         found = await searchCinemeta(title, "movie");
@@ -256,7 +290,7 @@ async function getWatchlistCatalog() {
       if (found && found.id) {
         metas.push({
           ...found,
-          type: "series",
+          type: found.type || "series",
           name: found.name,
           description: found.description || "From watchlist.txt",
         });
@@ -270,8 +304,6 @@ async function getWatchlistCatalog() {
         });
       }
     } catch (e) {
-      console.log("Watchlist item failed:", title, e.message);
-
       metas.push({
         id: `watchlist-${i + 1}`,
         type: "series",
