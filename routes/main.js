@@ -271,26 +271,28 @@ async function autoIMDb() {
   const box = getBox();
   const status = document.getElementById("status");
 
-  box.value = joinAll();
-  fullData = box.value;
+  // use whatever is currently visible/edited
+  const currentText = box.value;
 
-  status.innerText = "Finding IMDb...";
+  status.innerText = "Finding IMDb IDs...";
 
   try {
     const res = await fetch("/api/imdb", {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
-      body: box.value
+      body: currentText
     });
 
-    fullData = await res.text();
-    box.value = fullData;
+    const text = await res.text();
+
+    box.value = text;
+    fullData = text;
 
     await classifyTabs();
 
-    status.innerText = "✔ Auto IMDb done (Save)";
+    status.innerText = "Auto IMDb done ✔ Click Save";
   } catch {
-    status.innerText = "❌ Auto IMDb failed";
+    status.innerText = "Auto IMDb failed.";
   }
 }
 
