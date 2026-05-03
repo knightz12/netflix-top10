@@ -155,7 +155,8 @@ router.get("/edit", (req, res) => {
       <button type="button" class="secondary" onclick="renderTab('movie')">Movies</button>
       <button type="button" class="secondary" onclick="renderTab('series')">Series</button>
       <button type="button" class="secondary" onclick="renderTab('unknown')">Unknown</button>
-
+      <button type="button" class="secondary" onclick="sortAZ()">A-Z</button>
+      <button type="button" class="secondary" onclick="sortRecent()">Recent</button>
       <button type="button" class="blue" onclick="autoIMDb()">Auto IMDb</button>
       <button type="submit" class="green">Save</button>
     </div>
@@ -254,6 +255,37 @@ async function classifyTabs() {
     getBox().value = fullData;
     status.innerText = "⚠ classification failed";
   }
+}
+
+function getBox() {
+  return document.getElementById("box");
+}
+
+function splitLines(text) {
+  return text.split("\n").map(l => l.trim()).filter(Boolean);
+}
+
+/* ---------------- SORT A-Z ---------------- */
+function sortAZ() {
+  const lines = splitLines(getBox().value);
+
+  lines.sort((a, b) => {
+    const aTitle = a.split("|")[0].toLowerCase();
+    const bTitle = b.split("|")[0].toLowerCase();
+    return aTitle.localeCompare(bTitle);
+  });
+
+  getBox().value = lines.join("\n");
+}
+
+/* ---------------- SORT RECENT ---------------- */
+function sortRecent() {
+  const lines = splitLines(getBox().value);
+
+  // reverse order = latest on top
+  lines.reverse();
+
+  getBox().value = lines.join("\n");
 }
 
 /* ---------------- SAVE ---------------- */
