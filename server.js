@@ -8,6 +8,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.text());
 
 const URLS = {
   movie: "https://www.netflix.com/tudum/top10/philippines",
@@ -23,10 +25,10 @@ let cache = {
 };
 
 const manifest = {
-  id: "org.netflix.mdl.combo.clean",
-  version: "8.0.0",
+  id: "org.netflix.mdl.combo.editor",
+  version: "9.0.0",
   name: "Netflix PH + Watchlist",
-  description: "Netflix PH Top 10 + manual watchlist.txt catalog",
+  description: "Netflix PH Top 10 + editable watchlist catalog",
   resources: ["catalog"],
   types: ["movie", "series"],
   catalogs: [
@@ -151,58 +153,31 @@ async function fetchNetflix(type) {
   };
 }
 
-function readWatchlist() {
+function readWatchlistRaw() {
   try {
     if (!fs.existsSync(WATCHLIST_FILE)) {
       fs.writeFileSync(WATCHLIST_FILE, "", "utf-8");
-      return [];
     }
 
-    return fs
-      .readFileSync(WATCHLIST_FILE, "utf-8")
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#"))
-      .map((line) => {
-        const parts = line.split("|").map((p) => p.trim());
-
-        return {
-          title: parts[0],
-          imdbId: parts[1] && parts[1].startsWith("tt") ? parts[1] : null,
-        };
-      });
-  } catch (e) {
-    console.error("watchlist.txt read error:", e.message);
-    return [];
+    return fs.readFileSync(WATCHLIST_FILE, "utf-8");
+  } catch {
+    return "";
   }
 }
 
-async function getMetaByImdbId(imdbId, type) {
-  try {
-    const url = `https://v3-cinemeta.strem.io/meta/${type}/${imdbId}.json`;
+function readWatchlist() {
+  return readWatchlistRaw()
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"))
+    .map((line) => {
+      const parts = line.split("|").map((p) => p.trim());
 
-    const res = await fetch(url);
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    return data.meta || null;
-  } catch {
-    return null;
-  }
-}
-
-async function getMetaByImdbId(imdbId, type = "series") {
-  try {
-    const url = `https://v3-cinemeta.strem.io/meta/${type}/${imdbId}.json`;
-
-    const res = await fetch(url);
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    return data.meta || null;
-  } catch {
-    return null;
-  }
+      return {
+        title: parts[0],
+        imdbId: parts[1] && parts[1].startsWith("tt") ? parts[1] : null,
+      };
+    });
 }
 
 async function searchCinemeta(title, type) {
@@ -230,6 +205,20 @@ async function searchCinemeta(title, type) {
     );
 
     return exact || contains || metas[0];
+  } catch {
+    return null;
+  }
+}
+
+async function getMetaByImdbId(imdbId, type) {
+  try {
+    const url = `https://v3-cinemeta.strem.io/meta/${type}/${imdbId}.json`;
+
+    const res = await fetch(url);
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    return data.meta || null;
   } catch {
     return null;
   }
@@ -309,7 +298,7 @@ async function getWatchlistCatalog() {
           description: "From watchlist.txt",
         });
       }
-    } catch {
+    } catch (e) {
       metas.push({
         id: `watchlist-${i + 1}`,
         type: "series",
@@ -323,10 +312,18 @@ async function getWatchlistCatalog() {
   return metas;
 }
 
+function escapeHtml(text) {
+  return String(text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 app.get("/", (req, res) => {
   res.send(`
     <h2>Netflix PH + Watchlist addon running</h2>
     <p><a href="/manifest.json">Manifest</a></p>
+    <p><a href="/edit">Edit Watchlist</a></p>
     <p><a href="/debug/watchlist">Watchlist Debug</a></p>
     <p><a href="/catalog/series/mdl_watchlist.json">Watchlist Catalog</a></p>
     <p><a href="/debug/netflix/movie">Netflix Movie Debug</a></p>
@@ -368,12 +365,109 @@ app.get("/debug/netflix/:type", async (req, res) => {
 });
 
 app.get("/debug/watchlist", (req, res) => {
-  const titles = readWatchlist();
+  const items = readWatchlist();
   res.json({
     file: "watchlist.txt",
-    count: titles.length,
-    titles,
+    count: items.length,
+    items,
   });
+});
+
+app.get("/edit", (req, res) => {
+  const content = readWatchlistRaw();
+  const saved = req.query.saved ? `<p class="saved">Saved!</p>` : "";
+
+  res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Watchlist Editor</title>
+  <style>
+    body {
+      background: #111;
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 24px;
+      max-width: 1100px;
+      margin: auto;
+    }
+    h1 {
+      margin-bottom: 4px;
+    }
+    .hint {
+      color: #bbb;
+      margin-bottom: 16px;
+    }
+    .saved {
+      background: #153d1f;
+      color: #8cff9a;
+      padding: 10px 14px;
+      border-radius: 8px;
+      display: inline-block;
+    }
+    textarea {
+      width: 100%;
+      height: 70vh;
+      background: #1b1b1b;
+      color: white;
+      border: 1px solid #444;
+      border-radius: 10px;
+      padding: 14px;
+      font-size: 15px;
+      line-height: 1.5;
+      box-sizing: border-box;
+      white-space: pre;
+    }
+    button {
+      margin-top: 14px;
+      background: #e50914;
+      color: white;
+      border: 0;
+      padding: 12px 22px;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    a {
+      color: #ff5c5c;
+      margin-right: 12px;
+    }
+    code {
+      background: #222;
+      padding: 2px 6px;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Watchlist Editor</h1>
+  <p class="hint">
+    Format: <code>Title | ttIMDbID</code><br>
+    Example: <code>The Glory | tt21344706</code>
+  </p>
+
+  ${saved}
+
+  <form method="POST" action="/edit">
+    <textarea name="watchlist">${escapeHtml(content)}</textarea>
+    <br>
+    <button type="submit">Save Watchlist</button>
+  </form>
+
+  <p>
+    <a href="/debug/watchlist">Debug Watchlist</a>
+    <a href="/catalog/series/mdl_watchlist.json">Catalog JSON</a>
+    <a href="/manifest.json">Manifest</a>
+  </p>
+</body>
+</html>
+`);
+});
+
+app.post("/edit", (req, res) => {
+  const content = req.body.watchlist || "";
+  fs.writeFileSync(WATCHLIST_FILE, content, "utf-8");
+  res.redirect("/edit?saved=1");
 });
 
 app.listen(PORT, "0.0.0.0", () => {
