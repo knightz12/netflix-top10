@@ -102,50 +102,120 @@ router.get("/edit", (req, res) => {
 <div class="wrap">
   <h1>Watchlist Editor</h1>
 
-  <div class="tabs">
-    <div class="tab active" onclick="switchTab('all')">All</div>
-    <div class="tab" onclick="switchTab('movies')">Movies</div>
-    <div class="tab" onclick="switchTab('series')">Series</div>
+  <div class="toolbar">
+  <button type="button" class="secondary" onclick="renderTab('all')">All</button>
+  <button type="button" class="secondary" onclick="renderTab('movie')">Movies</button>
+  <button type="button" class="secondary" onclick="renderTab('series')">Series</button>
+  <button type="button" class="secondary" onclick="renderTab('unknown')">Unknown</button>
+
+  <button type="button" class="blue" onclick="autoIMDb()">Auto IMDb</button>
+  <button type="submit" class="green">Save</button>
   </div>
 
-  <form method="POST">
-    <textarea id="box" name="data">${escapeHtml(content)}</textarea>
-    <br>
-    <button>Save</button>
+  <form method="POST" onsubmit="return beforeSave()">
+  <textarea id="box" name="data">${escapeHtml(content)}</textarea>
   </form>
 </div>
 
 <script>
 let fullData = document.getElementById("box").value;
+let currentTab = "all";
+let classified = { movie: [], series: [], unknown: [] };
 
-function switchTab(type) {
-  const tabs = document.querySelectorAll(".tab");
-  tabs.forEach(t => t.classList.remove("active"));
-  event.target.classList.add("active");
-
-  const lines = fullData.split("\\n").filter(Boolean);
-
-  if (type === "all") {
-    document.getElementById("box").value = fullData;
-    return;
-  }
-
-  const filtered = [];
-
-  for (const l of lines) {
-    if (!l.includes("tt")) continue;
-
-    if (type === "movies" && l.includes("| tt")) {
-      filtered.push(l);
-    }
-
-    if (type === "series" && l.includes("| tt")) {
-      filtered.push(l);
-    }
-  }
-
-  document.getElementById("box").value = filtered.join("\\n");
+function getBox() {
+  return document.getElementById("box");
 }
+
+function saveCurrentTabToMemory() {
+  const lines = getBox().value.split("\\n").map(l => l.trim()).filter(Boolean);
+
+  if (currentTab === "movie") classified.movie = lines;
+  if (currentTab === "series") classified.series = lines;
+  if (currentTab === "unknown") classified.unknown = lines;
+
+  if (currentTab === "all") {
+    fullData = getBox().value;
+  }
+}
+
+function renderTab(tab) {
+  saveCurrentTabToMemory();
+  currentTab = tab;
+
+  if (tab === "all") {
+    getBox().value = [
+      ...classified.movie,
+      ...classified.series,
+      ...classified.unknown
+    ].join("\\n");
+  }
+
+  if (tab === "movie") getBox().value = classified.movie.join("\\n");
+  if (tab === "series") getBox().value = classified.series.join("\\n");
+  if (tab === "unknown") getBox().value = classified.unknown.join("\\n");
+}
+
+async function classifyTabs() {
+  const status = document.getElementById("status");
+  status.innerText = "Detecting movie/series type...";
+
+  const res = await fetch("/api/classify", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: fullData
+  });
+
+  classified = await res.json();
+  renderTab("all");
+
+  status.innerText =
+    "Detected: " +
+    classified.movie.length + " movies, " +
+    classified.series.length + " series, " +
+    classified.unknown.length + " unknown";
+}
+
+function beforeSave() {
+  saveCurrentTabToMemory();
+
+  getBox().value = [
+    ...classified.movie,
+    ...classified.series,
+    ...classified.unknown
+  ].join("\\n");
+
+  return true;
+}
+
+async function autoIMDb() {
+  saveCurrentTabToMemory();
+
+  const box = getBox();
+  const status = document.getElementById("status");
+
+  box.value = [
+    ...classified.movie,
+    ...classified.series,
+    ...classified.unknown
+  ].join("\\n");
+
+  status.innerText = "Finding IMDb...";
+
+  const res = await fetch("/api/imdb", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: box.value
+  });
+
+  fullData = await res.text();
+  box.value = fullData;
+
+  await classifyTabs();
+
+  status.innerText = "Done ✔ Click Save";
+}
+
+classifyTabs();
 </script>
 
 </body>
