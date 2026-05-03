@@ -278,24 +278,34 @@ async function getWatchlistCatalog() {
   for (let i = 0; i < titles.length; i++) {
     const title = titles[i];
 
-    let found = await searchCinemeta(title, "series");
+    try {
+      let found = await searchCinemeta(title, "series");
 
-    if (!found) {
-      found = await searchCinemeta(title, "movie");
-    }
+      if (!found) {
+        found = await searchCinemeta(title, "movie");
+      }
 
-    if (found) {
+      if (found && found.id) {
+        metas.push({
+          ...found,
+          type: "series",
+          name: `⭐ ${found.name}`,
+          description: `From watchlist.txt\n\n${found.description || ""}`,
+        });
+      } else {
+        metas.push({
+          id: `watchlist-${i + 1}`,
+          type: "series",
+          name: `⭐ ${title}`,
+          poster: "",
+          description: "From watchlist.txt",
+        });
+      }
+    } catch (e) {
+      console.log("Watchlist item failed:", title, e.message);
+
       metas.push({
-        ...found,
-        type: found.type || "series",
-        name: `⭐ ${found.name}`,
-        description: `From watchlist.txt\n\n${found.description || ""}`,
-      });
-    } else {
-      metas.push({
-        id: `watchlist-${i + 1}-${title
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")}`,
+        id: `watchlist-${i + 1}`,
         type: "series",
         name: `⭐ ${title}`,
         poster: "",
