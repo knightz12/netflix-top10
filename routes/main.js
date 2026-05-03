@@ -8,17 +8,33 @@ const { readRaw } = require("../services/watchlist");
 
 const manifest = {
   id: "org.netflix.kdrama.fixed",
-  version: "13.3.0",
+  version: "13.4.0",
   name: "Netflix PH + Kdrama Watchlist",
   description: "Netflix PH Top 10 + Kdrama Watchlist",
   resources: ["catalog"],
   types: ["movie", "series"],
   idPrefixes: ["tt"],
   catalogs: [
-    { type: "movie", id: "netflix_movies", name: "Netflix PH Top 10 Movies This Week" },
-    { type: "series", id: "netflix_series", name: "Netflix PH Top 10 Series This Week" },
-    { type: "movie", id: "kdrama_movies", name: "Kdrama Watchlist Movies" },
-    { type: "series", id: "kdrama_series", name: "Kdrama Watchlist Series" },
+    {
+      type: "movie",
+      id: "netflix_movies",
+      name: "Netflix PH Top 10 Movies This Week",
+    },
+    {
+      type: "series",
+      id: "netflix_series",
+      name: "Netflix PH Top 10 Series This Week",
+    },
+    {
+      type: "movie",
+      id: "kdrama_movies",
+      name: "Kdrama Watchlist Movies",
+    },
+    {
+      type: "series",
+      id: "kdrama_series",
+      name: "Kdrama Watchlist Series",
+    },
   ],
 };
 
@@ -45,7 +61,7 @@ router.get("/manifest.json", (req, res) => {
   res.json(manifest);
 });
 
-/* ---------------- EDITOR WITH TABS ---------------- */
+/* ---------------- EDITOR UI ---------------- */
 
 router.get("/edit", (req, res) => {
   const content = readRaw();
@@ -57,43 +73,73 @@ router.get("/edit", (req, res) => {
   <title>Watchlist Editor</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { margin:0; background:#0f0f0f; color:#fff; font-family:Segoe UI; }
-    .wrap { max-width:1100px; margin:auto; padding:24px; }
-    h1 { margin-bottom:10px; }
-
-    .tabs {
-      display:flex;
-      gap:10px;
-      margin-bottom:10px;
+    body {
+      margin: 0;
+      background: #0f0f0f;
+      color: #fff;
+      font-family: Segoe UI, Arial, sans-serif;
     }
 
-    .tab {
-      padding:10px 16px;
-      background:#222;
-      border-radius:8px;
-      cursor:pointer;
+    .wrap {
+      max-width: 1100px;
+      margin: auto;
+      padding: 24px;
     }
 
-    .active { background:#e50914; }
+    h1 {
+      margin: 0 0 6px 0;
+    }
 
-    textarea {
-      width:100%;
-      height:65vh;
-      background:#0c0c0c;
-      border:1px solid #333;
-      border-radius:10px;
-      color:#fff;
-      padding:14px;
-      font-family:Consolas;
+    .hint {
+      font-size: 13px;
+      color: #999;
+      margin-bottom: 14px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 10px;
     }
 
     button {
-      margin-top:10px;
-      background:#16a34a;
-      border:0;
-      padding:10px 14px;
-      color:white;
-      border-radius:8px;
+      background: #e50914;
+      border: 0;
+      color: white;
+      padding: 10px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    .secondary { background: #333; }
+    .green { background: #16a34a; }
+    .blue { background: #2563eb; }
+
+    textarea {
+      width: 100%;
+      height: 65vh;
+      background: #0c0c0c;
+      border: 1px solid #333;
+      border-radius: 10px;
+      color: #fff;
+      padding: 14px;
+      font-family: Consolas, monospace;
+      font-size: 14px;
+      line-height: 1.45;
+      box-sizing: border-box;
+    }
+
+    .status {
+      margin-top: 10px;
+      color: #aaa;
+      font-size: 14px;
+      min-height: 22px;
     }
   </style>
 </head>
@@ -101,20 +147,23 @@ router.get("/edit", (req, res) => {
 
 <div class="wrap">
   <h1>Watchlist Editor</h1>
-
-  <div class="toolbar">
-  <button type="button" class="secondary" onclick="renderTab('all')">All</button>
-  <button type="button" class="secondary" onclick="renderTab('movie')">Movies</button>
-  <button type="button" class="secondary" onclick="renderTab('series')">Series</button>
-  <button type="button" class="secondary" onclick="renderTab('unknown')">Unknown</button>
-
-  <button type="button" class="blue" onclick="autoIMDb()">Auto IMDb</button>
-  <button type="submit" class="green">Save</button>
-  </div>
+  <div class="hint">Format: Title | tt1234567</div>
 
   <form method="POST" onsubmit="return beforeSave()">
-  <textarea id="box" name="data">${escapeHtml(content)}</textarea>
+    <div class="toolbar">
+      <button type="button" class="secondary" onclick="renderTab('all')">All</button>
+      <button type="button" class="secondary" onclick="renderTab('movie')">Movies</button>
+      <button type="button" class="secondary" onclick="renderTab('series')">Series</button>
+      <button type="button" class="secondary" onclick="renderTab('unknown')">Unknown</button>
+
+      <button type="button" class="blue" onclick="autoIMDb()">Auto IMDb</button>
+      <button type="submit" class="green">Save</button>
+    </div>
+
+    <textarea id="box" name="data">${escapeHtml(content)}</textarea>
   </form>
+
+  <div class="status" id="status"></div>
 </div>
 
 <script>
@@ -126,8 +175,15 @@ function getBox() {
   return document.getElementById("box");
 }
 
+function getVisibleLines() {
+  return getBox().value
+    .split("\\n")
+    .map(l => l.trim())
+    .filter(Boolean);
+}
+
 function saveCurrentTabToMemory() {
-  const lines = getBox().value.split("\\n").map(l => l.trim()).filter(Boolean);
+  const lines = getVisibleLines();
 
   if (currentTab === "movie") classified.movie = lines;
   if (currentTab === "series") classified.series = lines;
@@ -138,81 +194,100 @@ function saveCurrentTabToMemory() {
   }
 }
 
+function allLines() {
+  return [
+    ...classified.movie,
+    ...classified.series,
+    ...classified.unknown
+  ];
+}
+
 function renderTab(tab) {
   saveCurrentTabToMemory();
   currentTab = tab;
 
   if (tab === "all") {
-    getBox().value = [
-      ...classified.movie,
-      ...classified.series,
-      ...classified.unknown
-    ].join("\\n");
+    getBox().value = allLines().join("\\n");
   }
 
-  if (tab === "movie") getBox().value = classified.movie.join("\\n");
-  if (tab === "series") getBox().value = classified.series.join("\\n");
-  if (tab === "unknown") getBox().value = classified.unknown.join("\\n");
+  if (tab === "movie") {
+    getBox().value = classified.movie.join("\\n");
+  }
+
+  if (tab === "series") {
+    getBox().value = classified.series.join("\\n");
+  }
+
+  if (tab === "unknown") {
+    getBox().value = classified.unknown.join("\\n");
+  }
 }
 
 async function classifyTabs() {
   const status = document.getElementById("status");
-  status.innerText = "Detecting movie/series type...";
+  status.innerText = "Detecting movie / series type...";
 
-  const res = await fetch("/api/classify", {
-    method: "POST",
-    headers: { "Content-Type": "text/plain" },
-    body: fullData
-  });
+  try {
+    const res = await fetch("/api/classify", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: fullData
+    });
 
-  classified = await res.json();
-  renderTab("all");
+    classified = await res.json();
 
-  status.innerText =
-    "Detected: " +
-    classified.movie.length + " movies, " +
-    classified.series.length + " series, " +
-    classified.unknown.length + " unknown";
+    if (!classified.movie) classified.movie = [];
+    if (!classified.series) classified.series = [];
+    if (!classified.unknown) classified.unknown = [];
+
+    currentTab = "all";
+    getBox().value = allLines().join("\\n");
+
+    status.innerText =
+      "Detected: " +
+      classified.movie.length + " movies, " +
+      classified.series.length + " series, " +
+      classified.unknown.length + " unknown";
+  } catch {
+    classified = { movie: [], series: [], unknown: fullData.split("\\n").filter(Boolean) };
+    getBox().value = classified.unknown.join("\\n");
+    status.innerText = "Type detection failed. Loaded all items as Unknown.";
+  }
 }
 
 function beforeSave() {
   saveCurrentTabToMemory();
 
-  getBox().value = [
-    ...classified.movie,
-    ...classified.series,
-    ...classified.unknown
-  ].join("\\n");
+  getBox().value = allLines().join("\\n");
 
   return true;
 }
 
 async function autoIMDb() {
-  saveCurrentTabToMemory();
-
   const box = getBox();
   const status = document.getElementById("status");
 
-  box.value = [
-    ...classified.movie,
-    ...classified.series,
-    ...classified.unknown
-  ].join("\\n");
+  saveCurrentTabToMemory();
+  box.value = allLines().join("\\n");
 
-  status.innerText = "Finding IMDb...";
+  status.innerText = "Finding IMDb IDs...";
 
-  const res = await fetch("/api/imdb", {
-    method: "POST",
-    headers: { "Content-Type": "text/plain" },
-    body: box.value
-  });
+  try {
+    const res = await fetch("/api/imdb", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: box.value
+    });
 
-  fullData = await res.text();
-  box.value = fullData;
+    fullData = await res.text();
+    box.value = fullData;
 
-  await classifyTabs();
+    await classifyTabs();
 
-  status.innerText = "Done ✔ Click Save";
+    status.innerText = "Auto IMDb done ✔ Click Save";
+  } catch {
+    status.innerText = "Auto IMDb failed.";
+  }
 }
 
 classifyTabs();
