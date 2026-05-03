@@ -312,9 +312,52 @@ window.onload = () => {
 
 /* ---------------- SAVE ---------------- */
 
-router.post("/edit", (req, res) => {
-  fs.writeFileSync(WATCHLIST_FILE, req.body.data || "");
-  res.redirect("/edit");
+const fetch = require("node-fetch");
+
+router.post("/edit", async (req, res) => {
+  try {
+    const content = req.body.data || "";
+
+    const token = process.env.GITHUB_TOKEN;
+    const repo = "knightz12/netflix-top10"; // CHANGE if needed
+    const path = "watchlist.txt";
+
+    // get current file SHA
+    const getFile = await fetch(
+      `https://api.github.com/repos/${repo}/contents/${path}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+        },
+      }
+    );
+
+    const fileData = await getFile.json();
+    const sha = fileData.sha;
+
+    // update file
+    await fetch(
+      `https://api.github.com/repos/${repo}/contents/${path}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+        },
+        body: JSON.stringify({
+          message: "update watchlist",
+          content: Buffer.from(content).toString("base64"),
+          sha,
+        }),
+      }
+    );
+
+    res.redirect("/edit");
+  } catch (e) {
+    console.error(e);
+    res.send("Failed to save to GitHub");
+  }
 });
 
 module.exports = router;
