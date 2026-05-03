@@ -20,8 +20,8 @@ let cache = {
 };
 
 const manifest = {
-  id: "org.netflix.tudum.ph.top10.fixed",
-  version: "4.0.0",
+  id: "org.netflix.tudum.ph.top10.badges",
+  version: "5.0.0",
   name: "Netflix PH Top 10 Weekly",
   description: "Netflix Philippines weekly Top 10 movies and series from Tudum",
   resources: ["catalog"],
@@ -59,6 +59,17 @@ async function fetchHtml(url) {
   return await res.text();
 }
 
+function extractWeek(html) {
+  const $ = cheerio.load(html);
+  const text = $("body").text().replace(/\s+/g, " ");
+
+  const match =
+    text.match(/Week of\s+([A-Za-z]+\s+\d{1,2},\s+\d{4})/i) ||
+    text.match(/Global Top 10\s+Week of\s+([A-Za-z]+\s+\d{1,2},\s+\d{4})/i);
+
+  return match ? match[1] : "Latest Week";
+}
+
 function extractTitles(html, type) {
   const $ = cheerio.load(html);
 
@@ -88,7 +99,6 @@ function extractTitles(html, type) {
 
     if (
       alt &&
-      alt.toLowerCase().startsWith("image:") === false &&
       !alt.toLowerCase().includes("netflix") &&
       !titles.includes(alt)
     ) {
@@ -101,10 +111,7 @@ function extractTitles(html, type) {
 
   while ((m = rawAltRegex.exec(sectionHtml)) !== null) {
     const title = cleanTitle(m[1]);
-
-    if (title && !titles.includes(title)) {
-      titles.push(title);
-    }
+    if (title && !titles.includes(title)) titles.push(title);
   }
 
   if (titles.length < 10) {
@@ -123,10 +130,7 @@ function extractTitles(html, type) {
     let match;
     while ((match = regex.exec(block)) !== null) {
       const title = cleanTitle(match[2]);
-
-      if (title && !titles.includes(title)) {
-        titles.push(title);
-      }
+      if (title && !titles.includes(title)) titles.push(title);
     }
   }
 
@@ -135,11 +139,11 @@ function extractTitles(html, type) {
 
 async function fetchTudum(type) {
   const html = await fetchHtml(URLS[type]);
-  const titles = extractTitles(html, type);
 
-  console.log(`${type} titles:`, titles);
-
-  return titles;
+  return {
+    week: extractWeek(html),
+    titles: extractTitles(html, type),
+  };
 }
 
 async function searchCinemeta(title, type) {
@@ -149,75 +153,75 @@ async function searchCinemeta(title, type) {
       .replace(/:\s*Limited Series$/i, "")
       .trim();
 
-    const query = encodeURIComponent(clean);
-
-    const url = `https://v3-cinemeta.strem.io/catalog/${type}/top/search=${query}.json`;
+    const url = `https://v3-cinemeta.strem.io/catalog/${type}/top/search=${encodeURIComponent(
+      clean
+    )}.json`;
 
     const res = await fetch(url);
     if (!res.ok) return null;
 
     const data = await res.json();
     const metas = data.metas || [];
-
     if (!metas.length) return null;
 
-    // 1. EXACT MATCH
-    let exact = metas.find(
-      (m) =>
-        m.name &&
-        m.name.toLowerCase().trim() === clean.toLowerCase()
+    const exact = metas.find(
+      (m) => m.name && m.name.toLowerCase().trim() === clean.toLowerCase()
     );
 
-    if (exact) return exact;
-
-    // 2. CONTAINS MATCH
-    let contains = metas.find(
-      (m) =>
-        m.name &&
-        m.name.toLowerCase().includes(clean.toLowerCase())
-    );
-
-    if (contains) return contains;
-
-    // 3. fallback
-    return metas[0];
+    return exact || metas[0];
   } catch {
     return null;
   }
 }
 
-async function getCatalog(type) {
+function overlayPosterUrl(originalPoster, rank) {
+  if (!originalPoster) return "";
+
+  return `/poster?img=${encodeURIComponent(originalPoster)}&rank=${rank}`;
+}
+
+async function getCatalog(type, req) {
   const now = Date.now();
 
   if (cache[type].metas.length && now - cache[type].time < CACHE_MS) {
     return cache[type].metas;
   }
 
-  const titles = await fetchTudum(type);
+  const { week, titles } = await fetchTudum(type);
   const metas = [];
 
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+
   for (let i = 0; i < titles.length; i++) {
+    const rank = i + 1;
     const title = titles[i];
     const found = await searchCinemeta(title, type);
 
     if (found) {
+      const poster = found.poster
+        ? baseUrl + overlayPosterUrl(found.poster, rank)
+        : found.poster;
+
       metas.push({
         ...found,
         type,
-        name: `#${i + 1} ${found.name}`,
+        poster,
+        name: `🔥 #${rank} ${found.name}`,
         description:
-          `Netflix Philippines Weekly Top 10 #${i + 1}\n\n` +
+          `Netflix Philippines Weekly Top 10\n` +
+          `Rank: #${rank}\n` +
+          `Week: ${week}\n\n` +
           (found.description || ""),
       });
     } else {
       metas.push({
-        id: `netflix-ph-${type}-${i + 1}-${title
+        id: `netflix-ph-${type}-${rank}-${title
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")}`,
         type,
-        name: `#${i + 1} ${title}`,
+        name: `🔥 #${rank} ${title}`,
         poster: "",
-        description: `Netflix Philippines Weekly Top 10 #${i + 1}`,
+        description: `Netflix Philippines Weekly Top 10\nRank: #${rank}\nWeek: ${week}`,
       });
     }
   }
@@ -234,16 +238,50 @@ app.get("/manifest.json", (req, res) => {
   res.json(manifest);
 });
 
+app.get("/poster", (req, res) => {
+  const img = req.query.img;
+  const rank = req.query.rank || "?";
+
+  if (!img) return res.status(404).send("Missing poster");
+
+  res.setHeader("Content-Type", "image/svg+xml");
+  res.send(`
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="750">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="black" stop-opacity="0.75"/>
+      <stop offset="35%" stop-color="black" stop-opacity="0"/>
+      <stop offset="70%" stop-color="black" stop-opacity="0"/>
+      <stop offset="100%" stop-color="black" stop-opacity="0.8"/>
+    </linearGradient>
+  </defs>
+
+  <image href="${img}" width="500" height="750" preserveAspectRatio="xMidYMid slice"/>
+  <rect width="500" height="750" fill="url(#g)"/>
+
+  <rect x="20" y="20" width="145" height="58" rx="18" fill="#E50914"/>
+  <text x="92" y="58" text-anchor="middle"
+        font-size="34" font-family="Arial Black, Arial"
+        fill="white">NETFLIX</text>
+
+  <rect x="20" y="650" width="190" height="70" rx="22" fill="black" opacity="0.85"/>
+  <text x="115" y="697" text-anchor="middle"
+        font-size="42" font-family="Arial Black, Arial"
+        fill="white">🔥 #${rank}</text>
+</svg>
+`);
+});
+
 app.get("/catalog/:type/:id.json", async (req, res) => {
   try {
     const { type, id } = req.params;
 
     if (type === "movie" && id === "netflix_ph_top10_movies") {
-      return res.json({ metas: await getCatalog("movie") });
+      return res.json({ metas: await getCatalog("movie", req) });
     }
 
     if (type === "series" && id === "netflix_ph_top10_series") {
-      return res.json({ metas: await getCatalog("series") });
+      return res.json({ metas: await getCatalog("series", req) });
     }
 
     return res.json({ metas: [] });
@@ -255,8 +293,8 @@ app.get("/catalog/:type/:id.json", async (req, res) => {
 
 app.get("/debug/:type", async (req, res) => {
   const type = req.params.type === "series" ? "series" : "movie";
-  const titles = await fetchTudum(type);
-  res.json({ type, titles });
+  const data = await fetchTudum(type);
+  res.json(data);
 });
 
 app.listen(PORT, "0.0.0.0", () => {
