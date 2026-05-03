@@ -40,25 +40,30 @@ async function getMetaByImdbId(imdbId, type) {
   }
 }
 
-async function getWatchlist(type) {
+async function getWatchlist(targetType) {
   const items = parseWatchlist();
   const metas = [];
 
   for (const item of items) {
     let meta = null;
 
+    // ✅ 1. Use IMDb FIRST (most accurate)
     if (item.imdbId) {
-      meta = await getMetaByImdbId(item.imdbId, type);
+      meta = await getMetaByImdbId(item.imdbId, "series");
+      if (!meta) meta = await getMetaByImdbId(item.imdbId, "movie");
     }
 
+    // ✅ 2. Fallback search
     if (!meta) {
-      meta = await searchCinemeta(item.title, type);
+      meta = await searchCinemeta(item.title, "series");
+      if (!meta) meta = await searchCinemeta(item.title, "movie");
     }
 
-    if (meta && meta.id) {
+    // ✅ 3. ONLY push if type matches target
+    if (meta && meta.id && meta.type === targetType) {
       metas.push({
         ...meta,
-        type,
+        type: targetType,
       });
     }
   }
