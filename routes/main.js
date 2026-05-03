@@ -312,8 +312,6 @@ window.onload = () => {
 
 /* ---------------- SAVE ---------------- */
 
-const fetch = require("node-fetch");
-
 router.post("/edit", async (req, res) => {
   try {
     const content = req.body.data || "";
