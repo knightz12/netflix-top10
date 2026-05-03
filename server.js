@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const cheerio = require("cheerio");
+const { createCanvas, loadImage } = require("canvas");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,7 +22,7 @@ let cache = {
 
 const manifest = {
   id: "org.netflix.tudum.ph.top10.badges",
-  version: "5.0.0",
+  version: "5.1.0",
   name: "Netflix PH Top 10 Weekly",
   description: "Netflix Philippines weekly Top 10 movies and series from Tudum",
   resources: ["catalog"],
@@ -162,13 +163,20 @@ async function searchCinemeta(title, type) {
 
     const data = await res.json();
     const metas = data.metas || [];
+
     if (!metas.length) return null;
 
     const exact = metas.find(
       (m) => m.name && m.name.toLowerCase().trim() === clean.toLowerCase()
     );
 
-    return exact || metas[0];
+    const contains = metas.find(
+      (m) =>
+        m.name &&
+        m.name.toLowerCase().includes(clean.toLowerCase())
+    );
+
+    return exact || contains || metas[0];
   } catch {
     return null;
   }
@@ -177,7 +185,12 @@ async function searchCinemeta(title, type) {
 function overlayPosterUrl(originalPoster, rank) {
   if (!originalPoster) return "";
 
-  return `/poster?img=${encodeURIComponent(originalPoster)}&rank=${rank}`;
+  const highRes = originalPoster
+    .replace(/\/small\//g, "/large/")
+    .replace(/\/medium\//g, "/large/")
+    .replace(/\/poster\//g, "/poster/");
+
+  return `/poster?img=${encodeURIComponent(highRes)}&rank=${rank}`;
 }
 
 async function getCatalog(type, req) {
@@ -238,39 +251,76 @@ app.get("/manifest.json", (req, res) => {
   res.json(manifest);
 });
 
-app.get("/poster", (req, res) => {
-  const img = req.query.img;
-  const rank = req.query.rank || "?";
+app.get("/poster", async (req, res) => {
+  try {
+    const imgUrl = req.query.img;
+    const rank = req.query.rank || "?";
 
-  if (!img) return res.status(404).send("Missing poster");
+    if (!imgUrl) return res.status(404).send("Missing poster");
 
-  res.setHeader("Content-Type", "image/svg+xml");
-  res.send(`
-<svg xmlns="http://www.w3.org/2000/svg" width="500" height="750">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="black" stop-opacity="0.75"/>
-      <stop offset="35%" stop-color="black" stop-opacity="0"/>
-      <stop offset="70%" stop-color="black" stop-opacity="0"/>
-      <stop offset="100%" stop-color="black" stop-opacity="0.8"/>
-    </linearGradient>
-  </defs>
+    const image = await loadImage(imgUrl);
 
-  <image href="${img}" width="500" height="750" preserveAspectRatio="xMidYMid slice"/>
-  <rect width="500" height="750" fill="url(#g)"/>
+    const canvas = createCanvas(500, 750);
+    const ctx = canvas.getContext("2d");
 
-  <rect x="20" y="20" width="145" height="58" rx="18" fill="#E50914"/>
-  <text x="92" y="58" text-anchor="middle"
-        font-size="34" font-family="Arial Black, Arial"
-        fill="white">NETFLIX</text>
+    ctx.drawImage(image, 0, 0, 500, 750);
 
-  <rect x="20" y="650" width="190" height="70" rx="22" fill="black" opacity="0.85"/>
-  <text x="115" y="697" text-anchor="middle"
-        font-size="42" font-family="Arial Black, Arial"
-        fill="white">🔥 #${rank}</text>
-</svg>
-`);
+    const gradientTop = ctx.createLinearGradient(0, 0, 0, 180);
+    gradientTop.addColorStop(0, "rgba(0,0,0,0.65)");
+    gradientTop.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = gradientTop;
+    ctx.fillRect(0, 0, 500, 180);
+
+    const gradientBottom = ctx.createLinearGradient(0, 520, 0, 750);
+    gradientBottom.addColorStop(0, "rgba(0,0,0,0)");
+    gradientBottom.addColorStop(1, "rgba(0,0,0,0.85)");
+    ctx.fillStyle = gradientBottom;
+    ctx.fillRect(0, 520, 500, 230);
+
+    ctx.fillStyle = "#E50914";
+    roundRect(ctx, 18, 18, 140, 44, 10);
+    ctx.fill();
+
+    ctx.fillStyle = "white";
+    ctx.font = "bold 24px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("NETFLIX", 88, 48);
+
+    ctx.fillStyle = "rgba(0,0,0,0.85)";
+    roundRect(ctx, 20, 655, 165, 58, 16);
+    ctx.fill();
+
+    ctx.fillStyle = "white";
+    ctx.font = "bold 32px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(`🔥 #${rank}`, 102, 695);
+
+    res.setHeader("Content-Type", "image/png");
+    canvas.createPNGStream().pipe(res);
+  } catch (e) {
+    console.error("Poster error:", e.message);
+
+    if (req.query.img) {
+      return res.redirect(req.query.img);
+    }
+
+    return res.status(500).send("Poster failed");
+  }
 });
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
 
 app.get("/catalog/:type/:id.json", async (req, res) => {
   try {
