@@ -171,6 +171,7 @@ router.get("/edit", (req, res) => {
 
 <script>
 let allData = document.getElementById("box").value;
+let currentTab = "all";
 
 function box() {
   return document.getElementById("box");
@@ -180,8 +181,8 @@ function lines(text) {
   return text.split("\\n").map(x => x.trim()).filter(Boolean);
 }
 
-function syncAllData() {
-  if (box().value.trim()) {
+function syncCurrentEdit() {
+  if (currentTab === "all") {
     allData = box().value;
   }
 }
@@ -190,15 +191,19 @@ function sortAZ() {
   box().value = lines(box().value)
     .sort((a, b) => a.split("|")[0].trim().localeCompare(b.split("|")[0].trim()))
     .join("\\n");
-  allData = box().value;
+
+  if (currentTab === "all") allData = box().value;
 }
 
 function sortRecent() {
   box().value = lines(box().value).reverse().join("\\n");
-  allData = box().value;
+  if (currentTab === "all") allData = box().value;
 }
 
 async function renderTab(tab) {
+  syncCurrentEdit();
+  currentTab = tab;
+
   if (tab === "all") {
     box().value = allData;
     return;
@@ -221,20 +226,29 @@ async function autoIMDb() {
   const status = document.getElementById("status");
   status.innerText = "Finding IMDb...";
 
-  const textToFix = box().value.trim() ? box().value : allData;
+  syncCurrentEdit();
 
   const res = await fetch("/api/imdb", {
     method: "POST",
     headers: { "Content-Type": "text/plain" },
-    body: textToFix
+    body: box().value
   });
 
   allData = await res.text();
+  currentTab = "all";
   box().value = allData;
+
   status.innerText = "Done ✔ Click Save";
 }
 
 function beforeSave() {
+  if (currentTab === "all") {
+    allData = box().value;
+  } else {
+    alert("Switch to All before saving, or your tab-only edit may overwrite the full list.");
+    return false;
+  }
+
   box().value = allData;
   return true;
 }
