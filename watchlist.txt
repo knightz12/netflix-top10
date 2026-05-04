@@ -63,7 +63,7 @@ My Lovely Liar | series | tt27203727
 My Mister | series | tt7923710
 My Youth | series | tt37436162
 Namib | series | tt34993190
-Never Enough | series | NO_IMDB_FOUND
+Never Enough | movie | tt0439488
 Night Has Come | series | tt29899652
 No Gain, No Love | series | tt32981987
 No Tail to Tell | series | tt33429144
@@ -82,7 +82,7 @@ Pretty Crazy | movie | tt35382678
 Project Silence | movie | tt25808194
 Put Your Head on My Shoulder | series | tt10265158
 Pyramid Game | series | tt29311421
-Rain or Shine | series | NO_IMDB_FOUND
+Rain or Shine | series | tt7521898
 Reborn | series | tt37793706
 Remember: War of the Son | series | tt5260064
 Replay: The Moment When It Starts Again | series | tt30428921
