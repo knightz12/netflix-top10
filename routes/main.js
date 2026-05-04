@@ -170,6 +170,8 @@ router.get("/edit", (req, res) => {
 </div>
 
 <script>
+let allData = document.getElementById("box").value;
+
 function box() {
   return document.getElementById("box");
 }
@@ -178,32 +180,37 @@ function lines(text) {
   return text.split("\\n").map(x => x.trim()).filter(Boolean);
 }
 
+function syncAllData() {
+  if (box().value.trim()) {
+    allData = box().value;
+  }
+}
+
 function sortAZ() {
   box().value = lines(box().value)
     .sort((a, b) => a.split("|")[0].trim().localeCompare(b.split("|")[0].trim()))
     .join("\\n");
+  allData = box().value;
 }
 
 function sortRecent() {
   box().value = lines(box().value).reverse().join("\\n");
+  allData = box().value;
 }
 
 async function renderTab(tab) {
+  if (tab === "all") {
+    box().value = allData;
+    return;
+  }
+
   const res = await fetch("/api/classify", {
     method: "POST",
     headers: { "Content-Type": "text/plain" },
-    body: box().value
+    body: allData
   });
 
   const data = await res.json();
-
-  if (tab === "all") {
-    box().value = [
-      ...(data.movie || []),
-      ...(data.series || []),
-      ...(data.unknown || [])
-    ].join("\\n");
-  }
 
   if (tab === "movie") box().value = (data.movie || []).join("\\n");
   if (tab === "series") box().value = (data.series || []).join("\\n");
@@ -214,17 +221,21 @@ async function autoIMDb() {
   const status = document.getElementById("status");
   status.innerText = "Finding IMDb...";
 
+  const textToFix = box().value.trim() ? box().value : allData;
+
   const res = await fetch("/api/imdb", {
     method: "POST",
     headers: { "Content-Type": "text/plain" },
-    body: box().value
+    body: textToFix
   });
 
-  box().value = await res.text();
+  allData = await res.text();
+  box().value = allData;
   status.innerText = "Done ✔ Click Save";
 }
 
 function beforeSave() {
+  box().value = allData;
   return true;
 }
 </script>
