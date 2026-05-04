@@ -63,7 +63,7 @@ My Lovely Liar | series | tt27203727
 My Mister | series | tt7923710
 My Youth | series | tt37436162
 Namib | series | tt34993190
-Never Enough | movie | tt0439488
+Never Enough | series | tt0439488
 Night Has Come | series | tt29899652
 No Gain, No Love | series | tt32981987
 No Tail to Tell | series | tt33429144
@@ -104,7 +104,7 @@ Soulmate | movie | tt13086130
 Soundtrack #1 | series | tt18970038
 Speed and Love | series | tt36596644
 Spring of Youth | series | tt36667479
-Stay with Me | movie | tt8637534
+Stay with Me | movie | tt8982248
 Still Shining | series | tt40108629
 Surely Tomorrow | series | tt38221085
 Suspicious Partner | series | tt6720154
@@ -112,7 +112,7 @@ Tastefully Yours | series | tt36722167
 The Atypical Family | series | tt32166552
 The Comic Bang | series | tt22024682
 The Genius of Girlfriend | series | tt37831535
-The Girl's Ghost Story | movie | tt10846772
+The Girl's Ghost Story | movie | tt3892620
 The Glory | series | tt21344706
 The Great Flood | movie | tt29927663
 The Judge from Hell | series | tt33255143
@@ -127,7 +127,7 @@ The Temperature of Language: Our Nineteen | series | tt15023518
 The White Olive Tree | series | tt31450820
 The WONDERfools | series | tt34440854
 The Worst of Evil | series | tt20600022
-Till We Meet Again | movie | tt0037379
+Till We Meet Again | movie | tt14405280
 Tomorrow with You | series | tt5994346
 Top Management | series | tt9284162
 Touch Your Heart | series | tt9466990
