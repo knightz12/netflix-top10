@@ -168,62 +168,123 @@ router.get("/edit", (req, res) => {
 </div>
 
 <script>
+let fullData = document.getElementById("box").value;
+let currentTab = "all";
+let classified = {
+  movie: [],
+  series: [],
+  unknown: []
+};
+
 function getBox() {
   return document.getElementById("box");
 }
 
-function getLines() {
-  return getBox().value
-    .split("\\n")
+function splitLines(text) {
+  return text
+    .split("\n")
     .map(l => l.trim())
     .filter(Boolean);
 }
 
-function setLines(lines) {
-  getBox().value = lines.join("\\n");
+function saveCurrentTab() {
+  const lines = splitLines(getBox().value);
+
+  if (currentTab === "movie") classified.movie = lines;
+  if (currentTab === "series") classified.series = lines;
+  if (currentTab === "unknown") classified.unknown = lines;
+  if (currentTab === "all") fullData = getBox().value;
 }
 
-/* A-Z sort */
-function sortAZ() {
-  const lines = getLines();
+function allLines() {
+  return [
+    ...classified.movie,
+    ...classified.series,
+    ...classified.unknown
+  ];
+}
 
-  lines.sort((a, b) => {
-    const aTitle = a.split("|")[0].trim().toLowerCase();
-    const bTitle = b.split("|")[0].trim().toLowerCase();
-    return aTitle.localeCompare(bTitle);
+function renderTab(tab) {
+  saveCurrentTab();
+  currentTab = tab;
+
+  if (tab === "all") getBox().value = allLines().join("\n");
+  if (tab === "movie") getBox().value = classified.movie.join("\n");
+  if (tab === "series") getBox().value = classified.series.join("\n");
+  if (tab === "unknown") getBox().value = classified.unknown.join("\n");
+}
+
+async function classifyTabs() {
+  const status = document.getElementById("status");
+  status.innerText = "Detecting types...";
+
+  const res = await fetch("/api/classify", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: fullData
   });
 
-  setLines(lines);
+  classified = await res.json();
+
+  classified.movie = classified.movie || [];
+  classified.series = classified.series || [];
+  classified.unknown = classified.unknown || [];
+
+  renderTab("all");
+
+  status.innerText =
+    classified.movie.length + " movies • " +
+    classified.series.length + " series • " +
+    classified.unknown.length + " unknown";
 }
 
-/* Recently added first */
+function sortAZ() {
+  const lines = splitLines(getBox().value);
+
+  lines.sort((a, b) => {
+    const aa = a.split("|")[0].trim().toLowerCase();
+    const bb = b.split("|")[0].trim().toLowerCase();
+    return aa.localeCompare(bb);
+  });
+
+  getBox().value = lines.join("\n");
+}
+
 function sortRecent() {
-  const lines = getLines();
-  lines.reverse();
-  setLines(lines);
+  const lines = splitLines(getBox().value);
+  getBox().value = lines.reverse().join("\n");
 }
 
 async function autoIMDb() {
   const box = getBox();
   const status = document.getElementById("status");
 
+  saveCurrentTab();
+  box.value = allLines().join("\n");
+
   status.innerText = "Finding IMDb...";
 
-  try {
-    const res = await fetch("/api/imdb", {
-      method: "POST",
-      headers: { "Content-Type": "text/plain" },
-      body: box.value
-    });
+  const res = await fetch("/api/imdb", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: box.value
+  });
 
-    const text = await res.text();
-    box.value = text;
+  fullData = await res.text();
+  box.value = fullData;
 
-    status.innerText = "Done ✔ Click Save";
-  } catch {
-    status.innerText = "Error ❌";
-  }
+  await classifyTabs();
+
+  status.innerText = "Done ✔ Click Save";
 }
+
+function beforeSave() {
+  saveCurrentTab();
+  getBox().value = allLines().join("\n");
+  return true;
+}
+
+classifyTabs();
 </script>
 
 </body>
