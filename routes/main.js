@@ -155,8 +155,10 @@ router.get("/edit", (req, res) => {
       <button type="button" class="secondary" onclick="renderTab('movie')">Movies</button>
       <button type="button" class="secondary" onclick="renderTab('series')">Series</button>
       <button type="button" class="secondary" onclick="renderTab('unknown')">Unknown</button>
+
       <button type="button" class="secondary" onclick="sortAZ()">A-Z</button>
       <button type="button" class="secondary" onclick="sortRecent()">Recent</button>
+
       <button type="button" class="blue" onclick="autoIMDb()">Auto IMDb</button>
       <button type="submit" class="green">Save</button>
     </div>
@@ -170,121 +172,120 @@ router.get("/edit", (req, res) => {
 <script>
 let fullData = document.getElementById("box").value;
 let currentTab = "all";
-let classified = {
-  movie: [],
-  series: [],
-  unknown: []
-};
+let classified = { movie: [], series: [], unknown: [] };
 
-function getBox() {
+function box() {
   return document.getElementById("box");
 }
 
 function splitLines(text) {
-  return text
-    .split("\n")
-    .map(l => l.trim())
-    .filter(Boolean);
+  return text.split("\n").map(l => l.trim()).filter(Boolean);
 }
 
-function saveCurrentTab() {
-  const lines = splitLines(getBox().value);
-
-  if (currentTab === "movie") classified.movie = lines;
-  if (currentTab === "series") classified.series = lines;
-  if (currentTab === "unknown") classified.unknown = lines;
-  if (currentTab === "all") fullData = getBox().value;
-}
-
-function allLines() {
+function rebuildAll() {
   return [
     ...classified.movie,
     ...classified.series,
     ...classified.unknown
-  ];
+  ].join("\n");
 }
 
-function renderTab(tab) {
-  saveCurrentTab();
-  currentTab = tab;
+function saveCurrentTab() {
+  const lines = splitLines(box().value);
 
-  if (tab === "all") getBox().value = allLines().join("\n");
-  if (tab === "movie") getBox().value = classified.movie.join("\n");
-  if (tab === "series") getBox().value = classified.series.join("\n");
-  if (tab === "unknown") getBox().value = classified.unknown.join("\n");
+  if (currentTab === "movie") classified.movie = lines;
+  if (currentTab === "series") classified.series = lines;
+  if (currentTab === "unknown") classified.unknown = lines;
+  if (currentTab === "all") fullData = box().value;
 }
 
-async function classifyTabs() {
-  const status = document.getElementById("status");
-  status.innerText = "Detecting types...";
-
+async function classifyText(text) {
   const res = await fetch("/api/classify", {
     method: "POST",
     headers: { "Content-Type": "text/plain" },
-    body: fullData
+    body: text
   });
 
-  classified = await res.json();
+  const data = await res.json();
 
-  classified.movie = classified.movie || [];
-  classified.series = classified.series || [];
-  classified.unknown = classified.unknown || [];
+  classified.movie = data.movie || [];
+  classified.series = data.series || [];
+  classified.unknown = data.unknown || [];
+}
 
-  renderTab("all");
+async function renderTab(tab) {
+  saveCurrentTab();
+  currentTab = tab;
 
-  status.innerText =
-    classified.movie.length + " movies • " +
-    classified.series.length + " series • " +
-    classified.unknown.length + " unknown";
+  if (tab === "all") {
+    await classifyText(fullData);
+    box().value = rebuildAll();
+    return;
+  }
+
+  await classifyText(fullData);
+
+  if (tab === "movie") box().value = classified.movie.join("\n");
+  if (tab === "series") box().value = classified.series.join("\n");
+  if (tab === "unknown") box().value = classified.unknown.join("\n");
 }
 
 function sortAZ() {
-  const lines = splitLines(getBox().value);
-
+  const lines = splitLines(box().value);
   lines.sort((a, b) => {
     const aa = a.split("|")[0].trim().toLowerCase();
     const bb = b.split("|")[0].trim().toLowerCase();
     return aa.localeCompare(bb);
   });
-
-  getBox().value = lines.join("\n");
+  box().value = lines.join("\n");
+  fullData = box().value;
 }
 
 function sortRecent() {
-  const lines = splitLines(getBox().value);
-  getBox().value = lines.reverse().join("\n");
+  const lines = splitLines(box().value);
+  box().value = lines.reverse().join("\n");
+  fullData = box().value;
 }
 
 async function autoIMDb() {
-  const box = getBox();
   const status = document.getElementById("status");
 
   saveCurrentTab();
-  box.value = allLines().join("\n");
+
+  const textToFix = currentTab === "all" ? box().value : rebuildAll();
 
   status.innerText = "Finding IMDb...";
 
   const res = await fetch("/api/imdb", {
     method: "POST",
     headers: { "Content-Type": "text/plain" },
-    body: box.value
+    body: textToFix
   });
 
   fullData = await res.text();
-  box.value = fullData;
+  box().value = fullData;
 
-  await classifyTabs();
+  await classifyText(fullData);
 
   status.innerText = "Done ✔ Click Save";
 }
 
 function beforeSave() {
   saveCurrentTab();
-  getBox().value = allLines().join("\n");
+
+  if (currentTab === "all") {
+    box().value = fullData;
+  } else {
+    box().value = rebuildAll();
+  }
+
   return true;
 }
 
-classifyTabs();
+window.onload = async () => {
+  await classifyText(fullData);
+  box().value = fullData;
+};
 </script>
 
 </body>
