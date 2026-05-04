@@ -178,28 +178,19 @@ function box() {
   return document.getElementById("box");
 }
 
-function splitLines(text) {
-  return text.split("\n").map(l => l.trim()).filter(Boolean);
+function lines(text) {
+  return text.split("\\n").map(x => x.trim()).filter(Boolean);
 }
 
-function rebuildAll() {
+function allText() {
   return [
     ...classified.movie,
     ...classified.series,
     ...classified.unknown
-  ].join("\n");
+  ].join("\\n");
 }
 
-function saveCurrentTab() {
-  const lines = splitLines(box().value);
-
-  if (currentTab === "movie") classified.movie = lines;
-  if (currentTab === "series") classified.series = lines;
-  if (currentTab === "unknown") classified.unknown = lines;
-  if (currentTab === "all") fullData = box().value;
-}
-
-async function classifyText(text) {
+async function classify(text) {
   const res = await fetch("/api/classify", {
     method: "POST",
     headers: { "Content-Type": "text/plain" },
@@ -214,77 +205,58 @@ async function classifyText(text) {
 }
 
 async function renderTab(tab) {
-  saveCurrentTab();
+  fullData = currentTab === "all" ? box().value : allText();
+
+  await classify(fullData);
   currentTab = tab;
 
-  if (tab === "all") {
-    await classifyText(fullData);
-    box().value = rebuildAll();
-    return;
-  }
-
-  await classifyText(fullData);
-
-  if (tab === "movie") box().value = classified.movie.join("\n");
-  if (tab === "series") box().value = classified.series.join("\n");
-  if (tab === "unknown") box().value = classified.unknown.join("\n");
+  if (tab === "all") box().value = allText();
+  if (tab === "movie") box().value = classified.movie.join("\\n");
+  if (tab === "series") box().value = classified.series.join("\\n");
+  if (tab === "unknown") box().value = classified.unknown.join("\\n");
 }
 
 function sortAZ() {
-  const lines = splitLines(box().value);
-  lines.sort((a, b) => {
+  const sorted = lines(box().value).sort((a, b) => {
     const aa = a.split("|")[0].trim().toLowerCase();
     const bb = b.split("|")[0].trim().toLowerCase();
     return aa.localeCompare(bb);
   });
-  box().value = lines.join("\n");
-  fullData = box().value;
+
+  box().value = sorted.join("\\n");
 }
 
 function sortRecent() {
-  const lines = splitLines(box().value);
-  box().value = lines.reverse().join("\n");
-  fullData = box().value;
+  box().value = lines(box().value).reverse().join("\\n");
 }
 
 async function autoIMDb() {
   const status = document.getElementById("status");
-
-  saveCurrentTab();
-
-  const textToFix = currentTab === "all" ? box().value : rebuildAll();
 
   status.innerText = "Finding IMDb...";
 
   const res = await fetch("/api/imdb", {
     method: "POST",
     headers: { "Content-Type": "text/plain" },
-    body: textToFix
+    body: box().value
   });
 
-  fullData = await res.text();
-  box().value = fullData;
+  box().value = await res.text();
+  fullData = box().value;
 
-  await classifyText(fullData);
+  await classify(fullData);
 
   status.innerText = "Done ✔ Click Save";
 }
 
 function beforeSave() {
-  saveCurrentTab();
-
-  if (currentTab === "all") {
-    box().value = fullData;
-  } else {
-    box().value = rebuildAll();
-  }
-
+  fullData = currentTab === "all" ? box().value : allText();
+  box().value = fullData;
   return true;
 }
 
 window.onload = async () => {
-  await classifyText(fullData);
-  box().value = fullData;
+  await classify(fullData);
 };
 </script>
 
